@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { whichDatabase } from "@/lib/db-label";
 
 /**
  * What the running server actually has.
@@ -29,6 +30,9 @@ export async function GET(req: NextRequest) {
   const nameOf = Object.fromEntries(divisions.map((d) => [d.id, d.name]));
 
   return NextResponse.json({
+    // The scheduled job prints this same line. If they differ, the job is
+    // pointed at the wrong database.
+    database: whichDatabase(),
     env: {
       DATABASE_URL: present("DATABASE_URL"),
       ANTHROPIC_API_KEY: present("ANTHROPIC_API_KEY"),
