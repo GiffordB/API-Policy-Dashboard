@@ -112,6 +112,8 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
   const [actor, setActor] = useState<string>(people[0]?.name ?? "Unknown");
   const [division, setDivision] = useState("all");
+  /** "" is everyone. Otherwise a person's id — the whole page narrows to them. */
+  const [owner, setOwner] = useState("");
   const [tab, setTab] = useState<string>("FEDERAL");
   const [topic, setTopic] = useState("All");
   const [query, setQuery] = useState("");
@@ -122,13 +124,25 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    try { const a = localStorage.getItem("pr_actor"); if (a) setActor(a); } catch {}
+    try {
+      const a = localStorage.getItem("pr_actor"); if (a) setActor(a);
+      const o = localStorage.getItem("pr_owner"); if (o) setOwner(o);
+    } catch {}
   }, []);
+  const changeOwner = (id: string) => {
+    setOwner(id);
+    try { localStorage.setItem("pr_owner", id); } catch {}
+  };
   const changeActor = (n: string) => { setActor(n); try { localStorage.setItem("pr_actor", n); } catch {} };
 
   const live = (i: ItemDTO) => i.priority !== "NOT_RELEVANT";
   const inDivision = useCallback((i: ItemDTO) => division === "all" || i.divisionId === division, [division]);
-  const scoped = useMemo(() => items.filter((i) => inDivision(i) && live(i)), [items, inDivision]);
+  const isOwner = useCallback((i: ItemDTO) => !owner || i.ownerId === owner, [owner]);
+  const scoped = useMemo(
+    () => items.filter((i) => inDivision(i) && isOwner(i) && live(i)),
+    [items, inDivision, isOwner]
+  );
+  const ownerName = owner ? people.find((p) => p.id === owner)?.name ?? null : null;
 
   /**
    * Searching is a mode, not a fourth filter.
@@ -154,11 +168,12 @@ export default function Dashboard({ data }: { data: DashboardData }) {
     }
     return items
       .filter(inDivision)
+      .filter(isOwner)
       .filter((i) => showGhost || live(i))
       .filter((i) => i.track === tab)
       .filter((i) => topic === "All" || i.topics.includes(topic))
       .sort(byRelevance);
-  }, [items, inDivision, showGhost, tab, topic, query]);
+  }, [items, inDivision, isOwner, showGhost, tab, topic, query]);
 
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
 
@@ -190,6 +205,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
   const jump = (i: ItemDTO) => {
     if (division !== "all" && division !== i.divisionId) setDivision(i.divisionId);
+    if (owner && i.ownerId !== owner) changeOwner("");
     setTab(i.track); setTopic("All"); setQuery("");
     if (!live(i)) setShowGhost(true);
     setOpenId(i.id);
@@ -218,8 +234,8 @@ export default function Dashboard({ data }: { data: DashboardData }) {
           <>
             <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
             <DeadlinePanel list={deadlines} DIV={DIV} />
-            <DivisionBar divisions={divisions} items={items.filter(live)} active={division}
-                         onPick={(id) => { setDivision(id); setTopic("All"); }} />
+            <DivisionBar divisions={divisions} items={items.filter((i) => live(i) && isOwner(i))}
+                         active={division} onPick={(id) => { setDivision(id); setTopic("All"); }} />
             <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
           </>
         )}
@@ -227,7 +243,10 @@ export default function Dashboard({ data }: { data: DashboardData }) {
         <div className="main" style={searching ? { marginTop: 18, gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <section className="panel" aria-label="Tracked items">
             <div className="panel-hd" style={{ borderBottom: 0, paddingBottom: 2 }}>
-              <h2>{searching ? "Search results" : "Tracked items"}</h2>
+              <h2>{searching ? "Search results" : ownerName ? `${ownerName}'s items` : "Tracked items"}</h2>
+              {!searching && ownerName && (
+                <span className="count">{scoped.length} across every division</span>
+              )}
               {searching && (
                 <span className="count">
                   {visible.length} match{visible.length === 1 ? "" : "es"} across every division
@@ -261,6 +280,22 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
             {!searching && (
             <div className="filters">
+              <span className="flab">Owner</span>
+              <select value={owner} onChange={(e) => changeOwner(e.target.value)} aria-label="Filter by owner"
+                      style={{ font: "inherit", fontSize: 12.5, color: "var(--ink)",
+                               background: owner ? "var(--accent-soft)" : "var(--surface-2)",
+                               border: "1px solid var(--rule)", borderRadius: 5, padding: "4px 8px",
+                               fontWeight: owner ? 600 : 400, marginRight: 4 }}>
+                <option value="">Everyone</option>
+                {people.some((p) => p.name === actor) && (
+                  <option value={people.find((p) => p.name === actor)!.id}>Mine — {actor}</option>
+                )}
+                <optgroup label="Someone else">
+                  {people.filter((p) => p.name !== actor).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </optgroup>
+              </select>
               <span className="flab">Topic</span>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 {topics.map((t) => (
@@ -461,7 +496,7 @@ function UrgentBand({ list, DIV, onJump, nextOpen }: {
         <Shape s="critical" size={11} />
         <span className="t">Closing inside 48 hours</span>
         <span className="c">{list.length} item{list.length > 1 ? "s" : ""} · {new Set(list.map((i) => i.divisionId)).size} divisions</span>
-        <span className="when">by priority, then time</span>
+        <span className="when">everyone, by priority then time</span>
       </div>
       {list.map((it) => {
         const d = DIV[it.divisionId];
