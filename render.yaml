@@ -1,18 +1,17 @@
-# Render blueprint: the database and the collector agents.
-# The Next.js dashboard deploys to Vercel and reads the same DATABASE_URL.
+# Render blueprint: the collector agent only.
 #
-# Plan IDs are compute shapes (0.1c-256mb), not tier names. An invalid plan
-# makes Render reject the whole file and the Apply button never appears.
-
-databases:
-  - name: policy-radar-db
-    databaseName: policy_radar
-    # 0.1 CPU, 256 MB — the smallest paid Postgres. `free` works for a trial,
-    # but Render deletes free instances after 30 days and the data goes too.
-    plan: 0.1c-256mb
-    # Same region as the Vercel deployment. Every page load queries the
-    # database, so distance is latency on every request.
-    region: ohio
+# The database is NOT declared here, on purpose.
+#
+# An earlier version of this file declared its own Postgres instance and wired
+# DATABASE_URL to it with `fromDatabase`. Render then created a second, empty
+# database and re-pointed the job at it on every sync — silently reverting the
+# value set in the dashboard. The app was on one database, the collector on
+# another, and the job failed with a missing-table error that read like a broken
+# migration.
+#
+# So the database stays outside the blueprint, and DATABASE_URL is `sync: false`:
+# Render never touches it, and the value you set in the dashboard is the value
+# the job uses. Point it at the same database the Vercel project uses.
 
 services:
   - type: cron
@@ -20,28 +19,26 @@ services:
     runtime: node
     plan: 0.5c-512mb
     region: ohio
-    # Hourly, on the hour.
+    # Hourly, on the hour, in UTC.
     #
     # The Federal Register publishes one issue per business day, so most runs
     # find nothing new. That is fine — the run is cheap and a same-day deadline
-    # extension is worth catching within the hour. If you would rather not pay
-    # for the quiet runs, "0 11,14,17,20 * * 1-5" covers the working day.
+    # extension is worth catching within the hour. To skip the quiet overnight
+    # runs, "0 11,14,17,20 * * 1-5" covers the working day in four.
     schedule: "0 * * * *"
     buildCommand: npm ci && npx prisma generate
-    # Three days, not thirty. An hourly job only needs to see what is new, and
-    # a 30-day window re-reads a thousand documents every time for nothing.
+    # Three days, not thirty. An hourly job only needs to see what is new.
     # Use `npm run collect -- 60` by hand for a backfill.
     startCommand: npm run collect -- 3
     envVars:
+      # Every one of these is set in the Render dashboard, never in git.
       - key: DATABASE_URL
-        fromDatabase:
-          name: policy-radar-db
-          property: connectionString
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
       # File new arrivals in the same run. Remove these two to keep the
       # collector free and file by hand from the dashboard instead.
       - key: CLASSIFY_AFTER_COLLECT
         value: "1"
       - key: CLASSIFY_CAP
         value: "25"
-      - key: ANTHROPIC_API_KEY
-        sync: false          # paste it in the Render dashboard, not in git

@@ -155,12 +155,24 @@ curl -X POST "https://YOUR-APP.vercel.app/api/collect?days=60" \
 Both are safe to run again. The seed upserts, and the collector only writes
 what changed.
 
-**The database and the collectors → Render.** `render.yaml` declares a Postgres
-instance and a cron job that runs `npm run collect` every hour. The collectors
-live on Render because Vercel's Hobby plan allows one cron run a day, and the
-Federal Register watcher needs to run more often than that.
+**The collectors → Render.** `render.yaml` declares a cron job that runs
+`npm run collect -- 3` every hour. The collectors live on Render because
+Vercel's Hobby plan allows one cron run a day, and the Federal Register watcher
+needs to run more often than that.
 
-Point Vercel's `DATABASE_URL` at the same Render database.
+**Create the database outside the blueprint**, and set `DATABASE_URL` on both
+Vercel and the Render job by hand. The blueprint deliberately does not declare a
+database: a blueprint-managed `fromDatabase` binding is re-applied on every sync
+and silently overwrites the value set in the dashboard, which is how you end up
+with the app on one database and the collector on another.
+
+Both the app and the job print the database they connected to — host and name
+only, never credentials. If those two lines differ, that is the bug:
+
+```bash
+curl https://YOUR-APP.vercel.app/api/admin/status -H "x-collect-secret: $COLLECT_SECRET"
+# → "database": "dpg-….ohio-postgres.render.com/policy_radar_xxxx"
+```
 
 ## Access, and what the audit trail actually proves
 
