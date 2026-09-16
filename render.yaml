@@ -21,9 +21,9 @@ services:
     runtime: node
     plan: 0.5c-512mb
     region: ohio
-    # Every 30 minutes. The Federal Register publishes on weekday mornings,
-    # but a document can post at any hour, so we do not try to be clever.
-    schedule: "*/30 * * * *"
+    # Hourly, on the hour. The Federal Register publishes in a batch each
+    # weekday morning, so more often than this buys very little.
+    schedule: "0 * * * *"
     buildCommand: npm ci && npx prisma generate
     startCommand: npm run collect
     envVars:

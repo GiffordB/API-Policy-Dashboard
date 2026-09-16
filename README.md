@@ -97,9 +97,9 @@ Both are safe to run again. The seed upserts, and the collector only writes
 what changed.
 
 **The database and the collectors → Render.** `render.yaml` declares a Postgres
-instance and a cron job that runs `npm run collect` every 30 minutes. The
-collectors live on Render because Vercel's Hobby plan allows one cron run a day,
-and the Federal Register watcher needs to run far more often than that.
+instance and a cron job that runs `npm run collect` every hour. The collectors
+live on Render because Vercel's Hobby plan allows one cron run a day, and the
+Federal Register watcher needs to run more often than that.
 
 Point Vercel's `DATABASE_URL` at the same Render database.
 
