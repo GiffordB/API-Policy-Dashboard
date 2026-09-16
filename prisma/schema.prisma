@@ -143,6 +143,8 @@ model Item {
   foundByWatchId String?
   foundBy       Watch?  @relation("foundBy", fields: [foundByWatchId], references: [id])
   classifiedAt  DateTime?                     // the classifier has judged this, filed or not
+  archivedAt    DateTime?                     // out of every view, but not deleted
+  archivedReason String?
   publishedOn   DateTime?                     // as printed in the Federal Register
   source        SourceKind @default(MANUAL)
   sourceUrl     String?

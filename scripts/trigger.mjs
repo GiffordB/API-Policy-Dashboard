@@ -47,7 +47,8 @@ console.log(`app: ${base}`);
 const c = await call(`/api/collect?days=${days}`, "collect");
 console.log(
   `Federal Register (${days}d): checked ${c.checked}, created ${c.created}, ` +
-  `changed ${c.changed}, unchanged ${c.skipped ?? 0}`
+  `changed ${c.changed}, unchanged ${c.skipped ?? 0}` +
+  (c.archived ? `, archived ${c.archived}` : "")
 );
 
 if (classify) {

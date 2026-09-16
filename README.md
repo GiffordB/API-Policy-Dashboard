@@ -38,6 +38,13 @@ the Federal Register for it now, or watch for it from now on.
   change, a new or extended comment deadline, an effective date.
 - **48-hour band.** Comment periods closing inside two days, at the top of the
   page. Membership is decided by time alone. Priority decides the order inside it.
+  A window that has already shut never appears — "open" is derived from the date
+  on every read, never from a stored flag that can go stale.
+- **Retention.** A record whose comment window shut more than a year ago, and
+  which nobody ever set a position or priority on, is archived out of every
+  view. Archived, not deleted: a rule can go quiet for a year and come back as
+  litigation. Anything a person touched is left alone, because that is someone
+  saying it still matters.
 - **Editing.** Priority, department, owner and position, all with an audit
   trail. The owner list follows the department, so moving an item clears an
   owner who is not on the new roster.

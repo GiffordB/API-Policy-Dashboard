@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 export type ItemDTO = {
   id: string; docket: string; title: string; agency: string; unit: string | null;
   track: string; stage: string; stageIndex: number;
-  nextLabel: string | null; days: number | null; isCommentPeriod: boolean;
+  nextLabel: string | null;
+  /** Days until comments close. Negative once the window has shut. */
+  days: number | null;
+  /** Derived from the date on every read, never from a stored flag. */
+  isOpen: boolean;
   divisionId: string; ownerId: string | null; ownerName: string | null;
   priority: string; priorityConfirmed: boolean;
   position: string; positionNote: string | null;
@@ -17,14 +21,21 @@ export type DivisionDTO = { id: string; name: string; colorVar: string };
 export type AuditDTO = { id: string; itemId: string | null; actor: string; field: string; fromValue: string | null; toValue: string | null; at: string };
 export type RunDTO = { source: string; startedAt: string; finishedAt: string | null; ok: boolean; checked: number; created: number; changed: number; error: string | null };
 
+/**
+ * Days until a comment window closes. Negative after it has shut.
+ *
+ * This used to clamp at zero, which made a window that closed yesterday read as
+ * "1 day left" and kept it shouting in the 48-hour band for ever.
+ */
 const daysUntil = (d: Date | null) =>
-  d === null ? null : Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86400000));
+  d === null ? null : Math.ceil((d.getTime() - Date.now()) / 86400000);
 
 export async function loadDashboard() {
   const [divisions, people, items, audits, runs] = await Promise.all([
     prisma.division.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.person.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.item.findMany({
+      where: { archivedAt: null },
       include: {
         owner: true,
         findings: { orderBy: { foundAt: "desc" }, take: 1 },
@@ -51,7 +62,9 @@ export async function loadDashboard() {
     items: items.map((i): ItemDTO => ({
       id: i.id, docket: i.docket, title: i.title, agency: i.agency, unit: i.unit,
       track: i.track, stage: i.stage, stageIndex: i.stageIndex,
-      nextLabel: i.nextLabel, days: daysUntil(i.commentDueAt), isCommentPeriod: i.isCommentPeriod,
+      nextLabel: i.nextLabel,
+      days: daysUntil(i.commentDueAt),
+      isOpen: i.commentDueAt !== null && i.commentDueAt.getTime() >= Date.now(),
       divisionId: i.divisionId, ownerId: i.ownerId, ownerName: i.owner?.name ?? null,
       priority: i.priority, priorityConfirmed: i.priorityConfirmed,
       position: i.position, positionNote: i.positionNote,

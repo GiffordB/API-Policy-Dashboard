@@ -64,6 +64,35 @@ async function loadWatchlist() {
 
 type Tally = { created: number; changed: number; skipped: number };
 
+/** A comment window shut this long ago is history, not work. */
+export const STALE_AFTER_DAYS = 365;
+const staleBefore = () => new Date(Date.now() - STALE_AFTER_DAYS * 86400000);
+
+/**
+ * Files away records whose comment window shut over a year ago and that nobody
+ * ever made a decision about.
+ *
+ * Archived, not deleted. A rule can go quiet for a year and come back as
+ * litigation, and a policy team's history is worth more than the disk it sits
+ * on. Anything a person touched — a position set, a priority confirmed — is
+ * left alone, because that is someone saying it still matters.
+ */
+async function archiveStale(): Promise<number> {
+  const { count } = await prisma.item.updateMany({
+    where: {
+      archivedAt: null,
+      commentDueAt: { lt: staleBefore() },
+      position: "PENDING",
+      priorityConfirmed: false,
+    },
+    data: {
+      archivedAt: new Date(),
+      archivedReason: `Comment window closed more than ${STALE_AFTER_DAYS} days ago and no position was ever set.`,
+    },
+  });
+  return count;
+}
+
 /**
  * Store one Federal Register document.
  * Agent-owned fields only — a human's priority, division and owner are never
@@ -71,6 +100,11 @@ type Tally = { created: number; changed: number; skipped: number };
  */
 async function ingest(doc: FrDoc, watchId: string | null, tally: Tally) {
   const docket = docketFor(doc);
+  // Never start tracking something whose comment window shut a year ago.
+  if (doc.comments_close_on && new Date(doc.comments_close_on) < staleBefore()) {
+    const seen = await prisma.item.findUnique({ where: { docket }, select: { id: true } });
+    if (!seen) { tally.skipped++; return; }
+  }
   const agency = agencyShortName(doc);
   const { stage, stageIndex } = stageFor(doc);
   const snap = snapshotOf(doc, stage);
@@ -219,6 +253,8 @@ export async function collectFederalRegister(sinceDays = 30) {
       });
     }
 
+    const archived = await archiveStale();
+
     await prisma.agentRun.update({
       where: { id: run.id },
       data: {
@@ -226,7 +262,7 @@ export async function collectFederalRegister(sinceDays = 30) {
         created: tally.created, changed: tally.changed,
       },
     });
-    return { ok: true, checked, ...tally };
+    return { ok: true, checked, ...tally, archived };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.agentRun.update({

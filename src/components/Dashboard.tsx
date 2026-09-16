@@ -54,7 +54,7 @@ const DL_MAX = 60;
 const DL_SHOWN = 10;
 
 function urgency(d: number | null): StatusKey | null {
-  if (d === null) return null;
+  if (d === null || d < 0) return null;   // a shut window has no urgency left
   if (d <= 7) return "critical";
   if (d <= 14) return "serious";
   if (d <= 30) return "warning";
@@ -93,7 +93,7 @@ function PriorityChip({ item, onClick }: { item: ItemDTO; onClick?: () => void }
 function PositionPill({ item, onClick }: { item: ItemDTO; onClick?: () => void }) {
   const p = POS[item.position] ?? POS.PENDING;
   const pending = item.position === "PENDING";
-  const needed = pending && item.isCommentPeriod && item.days !== null && item.days <= 30;
+  const needed = pending && item.isOpen && item.days !== null && item.days <= 30;
   const cls = `posn${pending ? " pending" : ""}${needed ? " needed" : ""}`;
   const inner = <><span className="sig" aria-hidden="true">{p.sig}</span>{needed ? "Position needed" : p.nm}</>;
   if (!onClick) return <span className={cls}>{inner}</span>;
@@ -179,12 +179,13 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   /* ---- urgent band: time decides membership, priority decides order ---- */
   const urgent = useMemo(() =>
     items
-      .filter((i) => live(i) && i.isCommentPeriod && i.days !== null && i.days <= URGENT_DAYS)
+      .filter((i) => live(i) && i.isOpen && i.days !== null && i.days >= 0 && i.days <= URGENT_DAYS)
       .sort((a, b) => PRI[a.priority].rank - PRI[b.priority].rank || (a.days ?? 0) - (b.days ?? 0)),
     [items]);
 
   const deadlines = useMemo(() =>
-    scoped.filter((i) => i.isCommentPeriod && i.days !== null).sort((a, b) => (a.days ?? 0) - (b.days ?? 0)),
+    scoped.filter((i) => i.isOpen && i.days !== null && i.days >= 0)
+      .sort((a, b) => (a.days ?? 0) - (b.days ?? 0)),
     [scoped]);
 
   const jump = (i: ItemDTO) => {
@@ -298,7 +299,9 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                       )}
                     </td></tr>
                   ) : visible.map((it) => {
-                    const d = DIV[it.divisionId], u = urgency(it.days);
+                    const d = DIV[it.divisionId];
+                    const u = it.isOpen ? urgency(it.days) : null;
+                    const closed = it.days !== null && it.days < 0;
                     return (
                       <tr key={it.id} tabIndex={0} className={live(it) ? "" : "ghost"}
                           aria-selected={it.id === openId}
@@ -320,6 +323,8 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                         <td>
                           {u ? (
                             <div className="due"><Shape s={u} /><b>{it.days}d</b><span style={{ color: "var(--muted)" }}>left</span></div>
+                          ) : closed ? (
+                            <div className="due" style={{ color: "var(--muted)" }}>comments closed</div>
                           ) : <div className="due" style={{ color: "var(--ink-2)" }}>—</div>}
                           <div className="it-dock" style={{ marginTop: 4 }}>{it.nextLabel}</div>
                         </td>
@@ -528,10 +533,11 @@ function DivisionBar({ divisions, items, active, onPick }: {
   items: ItemDTO[]; active: string; onPick: (id: string) => void;
 }) {
   const Tile = ({ id, name, colour, pool }: { id: string; name: string; colour: string; pool: ItemDTO[] }) => {
-    const due = pool.filter((i) => i.isCommentPeriod && i.days !== null && i.days <= 30).length;
-    const urgentN = pool.filter((i) => i.isCommentPeriod && i.days !== null && i.days <= URGENT_DAYS).length;
+    const due = pool.filter((i) => i.isOpen && i.days !== null && i.days <= 30).length;
+    const urgentN = pool.filter((i) => i.isOpen && i.days !== null && i.days <= URGENT_DAYS).length;
     const noOwner = pool.filter((i) => !i.ownerId).length;
-    const worst = pool.reduce<number | null>((m, i) => (i.days === null ? m : m === null || i.days < m ? i.days : m), null);
+    const worst = pool.reduce<number | null>(
+      (m, i) => (!i.isOpen || i.days === null || i.days < 0 ? m : m === null || i.days < m ? i.days : m), null);
     const u: StatusKey | null = urgentN ? "critical" : urgency(worst);
     return (
       <button className="dv" aria-pressed={active === id} style={{ ["--dvc" as string]: colour }} onClick={() => onPick(id)}>
@@ -555,13 +561,13 @@ function DivisionBar({ divisions, items, active, onPick }: {
 function StatBand({ scoped, items, division, divisions }: {
   scoped: ItemDTO[]; items: ItemDTO[]; division: string; divisions: { id: string; name: string }[];
 }) {
-  const due = scoped.filter((i) => i.isCommentPeriod && i.days !== null && i.days <= 30);
-  const u = scoped.filter((i) => i.isCommentPeriod && i.days !== null && i.days <= URGENT_DAYS).length;
-  const open = scoped.filter((i) => i.stage === "Comment open");
-  const soon = open.map((i) => i.days).filter((d): d is number => d !== null);
+  const due = scoped.filter((i) => i.isOpen && i.days !== null && i.days <= 30);
+  const u = scoped.filter((i) => i.isOpen && i.days !== null && i.days <= URGENT_DAYS).length;
+  const open = scoped.filter((i) => i.isOpen);
+  const soon = open.map((i) => i.days).filter((d): d is number => d !== null && d >= 0);
   const unowned = scoped.filter((i) => !i.ownerId).length;
   const needPosition = scoped.filter(
-    (i) => i.position === "PENDING" && i.isCommentPeriod && i.days !== null && i.days <= 30
+    (i) => i.position === "PENDING" && i.isOpen && i.days !== null && i.days <= 30
   ).length;
   return (
     <section className="band" aria-label="Summary">
@@ -736,7 +742,7 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
   busy: boolean;
 }) {
   const d = DIV[item.divisionId];
-  const u = urgency(item.days);
+  const u = item.isOpen ? urgency(item.days) : null;
   const stages = STAGE_SETS[item.track] ?? STAGE_SETS.FEDERAL;
   const roster = people.filter((p) => p.divisionId === item.divisionId);
 

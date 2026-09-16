@@ -19,11 +19,11 @@ export async function GET(req: NextRequest) {
 
   const [divisions, byDivision, byTrack, items, unowned, openWindows, runs] = await Promise.all([
     prisma.division.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
-    prisma.item.groupBy({ by: ["divisionId"], _count: true }),
-    prisma.item.groupBy({ by: ["track"], _count: true }),
+    prisma.item.groupBy({ by: ["divisionId"], _count: true, where: { archivedAt: null } }),
+    prisma.item.groupBy({ by: ["track"], _count: true, where: { archivedAt: null } }),
     prisma.item.count(),
-    prisma.item.count({ where: { ownerId: null } }),
-    prisma.item.count({ where: { isCommentPeriod: true, commentDueAt: { gte: new Date() } } }),
+    prisma.item.count({ where: { ownerId: null, archivedAt: null } }),
+    prisma.item.count({ where: { archivedAt: null, commentDueAt: { gte: new Date() } } }),
     prisma.agentRun.findMany({ orderBy: { startedAt: "desc" }, take: 5 }),
   ]);
 
@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
       unowned,
       openCommentWindows: openWindows,
       awaitingClassifier: await prisma.item.count({ where: { divisionId: "none", classifiedAt: null } }),
+      archived: await prisma.item.count({ where: { archivedAt: { not: null } } }),
       byDivision: Object.fromEntries(byDivision.map((r) => [nameOf[r.divisionId] ?? r.divisionId, r._count])),
       byTrack: Object.fromEntries(byTrack.map((r) => [r.track, r._count])),
     },
