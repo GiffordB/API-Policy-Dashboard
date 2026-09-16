@@ -109,18 +109,34 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   const inDivision = useCallback((i: ItemDTO) => division === "all" || i.divisionId === division, [division]);
   const scoped = useMemo(() => items.filter((i) => inDivision(i) && live(i)), [items, inDivision]);
 
+  /**
+   * Searching is a mode, not a fourth filter.
+   *
+   * It used to be ANDed with division, tab and topic, so a search from inside a
+   * narrowed view found nothing and gave no sign why. A search now looks at
+   * every division, every tab and every topic, and each row says where it
+   * lives. Browsing still respects the filters.
+   */
+  const searching = query.trim().length > 0;
+  const byRelevance = (a: ItemDTO, b: ItemDTO) =>
+    Number(a.priority === "NOT_RELEVANT") - Number(b.priority === "NOT_RELEVANT") ||
+    Number(a.days === null) - Number(b.days === null) ||
+    (a.days ?? 0) - (b.days ?? 0);
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (q) {
+      return items
+        .filter((i) => `${i.title} ${i.agency} ${i.docket} ${i.topics.join(" ")} ${i.ownerName ?? ""} ${i.stage}`
+          .toLowerCase().includes(q))
+        .sort(byRelevance);
+    }
     return items
       .filter(inDivision)
       .filter((i) => showGhost || live(i))
       .filter((i) => i.track === tab)
       .filter((i) => topic === "All" || i.topics.includes(topic))
-      .filter((i) => !q || `${i.title} ${i.agency} ${i.docket} ${i.topics.join(" ")} ${i.ownerName ?? ""}`.toLowerCase().includes(q))
-      .sort((a, b) =>
-        Number(a.priority === "NOT_RELEVANT") - Number(b.priority === "NOT_RELEVANT") ||
-        Number(a.days === null) - Number(b.days === null) ||
-        (a.days ?? 0) - (b.days ?? 0));
+      .sort(byRelevance);
   }, [items, inDivision, showGhost, tab, topic, query]);
 
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
@@ -184,10 +200,24 @@ export default function Dashboard({ data }: { data: DashboardData }) {
         <div className="main">
           <section className="panel" aria-label="Tracked items">
             <div className="panel-hd" style={{ borderBottom: 0, paddingBottom: 2 }}>
-              <h2>Tracked items</h2>
+              <h2>{searching ? "Search results" : "Tracked items"}</h2>
+              {searching && (
+                <span className="count">
+                  {visible.length} match{visible.length === 1 ? "" : "es"} across every division
+                </span>
+              )}
               <button className="addbtn spacer" onClick={() => setAdding(true)}>+ Track a new item</button>
             </div>
 
+            {searching ? (
+              <div className="filters">
+                <span className="flab">Searching</span>
+                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
+                  &ldquo;{query}&rdquo; — every division, every tab, every topic. Division and topic filters do not apply.
+                </span>
+                <button className="chip spacer" onClick={() => setQuery("")}>Clear search</button>
+              </div>
+            ) : (
             <div className="tabs" role="tablist">
               {TABS.map((t) => {
                 const n = scoped.filter((i) => i.track === t.id).length;
@@ -200,7 +230,9 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                 );
               })}
             </div>
+            )}
 
+            {!searching && (
             <div className="filters">
               <span className="flab">Topic</span>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
@@ -208,7 +240,11 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                   <button key={t} className="chip" aria-pressed={t === topic} onClick={() => setTopic(t)}>{t}</button>
                 ))}
               </div>
+              {topic !== "All" && (
+                <button className="chip spacer" onClick={() => setTopic("All")}>Clear topic</button>
+              )}
             </div>
+            )}
 
             <div className="tscroll">
               <table className="items">
@@ -225,9 +261,13 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                 <tbody>
                   {visible.length === 0 ? (
                     <tr><td colSpan={6} style={{ padding: "24px 14px", color: "var(--muted)" }}>
-                      Nothing here{query ? ` for “${query}”` : ""}.
+                      {searching
+                        ? `Nothing you track matches “${query}”. It may not be tracked yet.`
+                        : topic !== "All"
+                          ? `Nothing in ${DIV[division]?.name ?? "this view"} is tagged ${topic}.`
+                          : "Nothing here."}
                       <button className="addbtn" style={{ marginLeft: 8 }} onClick={() => setAdding(true)}>
-                        + Track {query ? `“${query}”` : "a new item"}
+                        {searching ? `Search the Federal Register for “${query}”` : "+ Track a new item"}
                       </button>
                     </td></tr>
                   ) : visible.map((it) => {
@@ -238,7 +278,12 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                           onClick={() => setOpenId(it.id)}
                           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(it.id); } }}>
                         <td>
-                          <div className="dvtag"><i style={{ background: d?.colorVar }} />{d?.name}</div>
+                          <div className="dvtag">
+                            <i style={{ background: d?.colorVar }} />{d?.name}
+                            {searching && <span style={{ color: "var(--muted)" }}>
+                              {" · "}{TABS.find((t) => t.id === it.track)?.label}
+                            </span>}
+                          </div>
                           <div className="it-title">{it.title}</div>
                           <div className="it-dock">{it.docket}</div>
                           <div className="segs">{it.topics.map((t) => <span className="seg" key={t}>{t}</span>)}</div>
@@ -809,6 +854,12 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
+
+  // Arriving from a search that found nothing: go straight to the source.
+  useEffect(() => {
+    if (seed.trim()) void lookup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The owner must be on the chosen department's roster.
   useEffect(() => {
