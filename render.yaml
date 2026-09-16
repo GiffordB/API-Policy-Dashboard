@@ -1,0 +1,22 @@
+# Render blueprint: the database and the collector agents.
+# The Next.js dashboard itself deploys to Vercel and reads the same DATABASE_URL.
+databases:
+  - name: policy-radar-db
+    databaseName: policy_radar
+    plan: basic-256mb
+
+services:
+  - type: cron
+    name: collect-federal-register
+    runtime: node
+    plan: starter
+    # Every 30 minutes. The Federal Register publishes on weekday mornings,
+    # but a rule can post at any hour, so we do not try to be clever.
+    schedule: "*/30 * * * *"
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npm run collect
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: policy-radar-db
+          property: connectionString

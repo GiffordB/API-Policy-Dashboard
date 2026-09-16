@@ -1,0 +1,154 @@
+// Policy Radar — regulatory and legislative tracking.
+// One item is one thing the policy team tracks: a rulemaking, a bill, a case.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Priority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+  NOT_RELEVANT
+}
+
+enum Track {
+  FEDERAL   // rulemaking
+  CONGRESS
+  STATE
+  COURT
+}
+
+enum SourceKind {
+  FEDERAL_REGISTER
+  REGULATIONS_GOV
+  CONGRESS_GOV
+  OPEN_STATES
+  COURTLISTENER
+  MANUAL
+}
+
+model Division {
+  id        String   @id            // up, mid, down, gas, corp
+  name      String
+  colorVar  String                  // the CSS token this division owns
+  sortOrder Int
+  people    Person[]
+  items     Item[]
+  createdAt DateTime @default(now())
+}
+
+model Person {
+  id         String   @id @default(cuid())
+  name       String
+  email      String?  @unique
+  divisionId String
+  division   Division @relation(fields: [divisionId], references: [id])
+  isLead     Boolean  @default(false)
+  // Litigation items default to this person inside their division.
+  isLitigationLead Boolean @default(false)
+  active     Boolean  @default(true)
+  owned      Item[]   @relation("owner")
+  createdAt  DateTime @default(now())
+
+  @@unique([name, divisionId])
+  @@index([divisionId])
+}
+
+model Item {
+  id         String     @id @default(cuid())
+  // The public identifier: docket number, bill number, case number.
+  docket     String     @unique
+  title      String
+  agency     String                        // EPA, PHMSA, House, 5th Circuit
+  unit       String?                       // the office inside the agency
+  track      Track
+  stage      String                        // Comment open, Final, Committee, Briefing
+  stageIndex Int        @default(0)
+
+  // The next date that matters, and whether it is a comment deadline.
+  nextLabel      String?
+  commentDueAt   DateTime?
+  isCommentPeriod Boolean @default(false)
+
+  divisionId String
+  division   Division   @relation(fields: [divisionId], references: [id])
+  ownerId    String?
+  owner      Person?    @relation("owner", fields: [ownerId], references: [id])
+
+  priority   Priority   @default(MEDIUM)
+  // false while an agent's guess is still waiting for a human to confirm it
+  priorityConfirmed Boolean @default(false)
+
+  position   String?                       // Support, Oppose, Support with modifications
+  topics     String[]  @default([])
+  standards  String[]  @default([])        // linked API standards, e.g. RP 1173
+  draftState String?                       // "Draft with counsel", "No draft started"
+
+  publishedOn   DateTime?                     // as printed in the Federal Register
+  source        SourceKind @default(MANUAL)
+  sourceUrl     String?
+  frCitation    String?
+  // The raw record the collector last saw, so the next run can diff against it.
+  lastSnapshot  Json?
+  lastSeenAt    DateTime?
+
+  findings   Finding[]
+  audits     Audit[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([divisionId])
+  @@index([track])
+  @@index([commentDueAt])
+  @@index([priority])
+}
+
+// What a collector agent noticed. One row per detected change.
+model Finding {
+  id        String     @id @default(cuid())
+  itemId    String
+  item      Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  source    SourceKind
+  summary   String                    // one line, shown in the drawer
+  detail    Json?                     // the field-level diff
+  foundAt   DateTime   @default(now())
+
+  @@index([itemId, foundAt])
+}
+
+// Every human edit. Never deleted.
+model Audit {
+  id        String   @id @default(cuid())
+  itemId    String?
+  item      Item?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actor     String                    // the person's name at the time of the edit
+  field     String                    // priority, division, owner, tracking
+  fromValue String?
+  toValue   String?
+  at        DateTime @default(now())
+
+  @@index([itemId, at])
+  @@index([at])
+}
+
+// One row per collector run, so the dashboard can say when a source went stale.
+model AgentRun {
+  id         String     @id @default(cuid())
+  source     SourceKind
+  startedAt  DateTime   @default(now())
+  finishedAt DateTime?
+  ok         Boolean    @default(false)
+  checked    Int        @default(0)
+  created    Int        @default(0)
+  changed    Int        @default(0)
+  error      String?
+
+  @@index([source, startedAt])
+}

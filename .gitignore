@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env*.local
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# The staff roster is real people. It never goes in the repo.
+data/roster.csv

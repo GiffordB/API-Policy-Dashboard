@@ -1,0 +1,16 @@
+# Copy this file to data/roster.csv and replace it with the real staff.
+# data/roster.csv is in .gitignore, so real names never enter the repository.
+# division is one of: up, mid, down, gas, corp
+# lead = y marks the division lead. litigation = y marks who owns court items.
+name,email,division,lead,litigation
+Example Upstream Lead,upstream.lead@example.org,up,y,
+Example Upstream Analyst,,up,,
+Example Upstream Counsel,,up,,y
+Example Midstream Lead,,mid,y,
+Example Midstream Counsel,,mid,,y
+Example Downstream Lead,,down,y,
+Example Downstream Counsel,,down,,y
+Example Gas Markets Lead,,gas,y,
+Example Gas Markets Counsel,,gas,,y
+Example Corporate Lead,,corp,y,
+Example Corporate Counsel,,corp,,y
