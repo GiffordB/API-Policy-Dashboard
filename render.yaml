@@ -1,17 +1,28 @@
 # Render blueprint: the database and the collector agents.
 # The Next.js dashboard itself deploys to Vercel and reads the same DATABASE_URL.
+#
+# Plan IDs come from https://render.com/docs/blueprint-spec — they are compute
+# shapes, not tier names. An invalid plan makes Render reject the whole file,
+# and the Apply button never appears.
+
 databases:
   - name: policy-radar-db
     databaseName: policy_radar
-    plan: basic-256mb
+    # 0.1 CPU, 256 MB. The smallest paid Postgres. Use `free` to trial it, but
+    # Render deletes free instances after 30 days and the data goes with them.
+    plan: 0.1c-256mb
+    # Put this in the same region as your Vercel deployment. Every page load
+    # queries the database, so distance is latency on every request.
+    region: ohio
 
 services:
   - type: cron
     name: collect-federal-register
     runtime: node
-    plan: starter
+    plan: 0.5c-512mb
+    region: ohio
     # Every 30 minutes. The Federal Register publishes on weekday mornings,
-    # but a rule can post at any hour, so we do not try to be clever.
+    # but a document can post at any hour, so we do not try to be clever.
     schedule: "*/30 * * * *"
     buildCommand: npm ci && npx prisma generate
     startCommand: npm run collect
