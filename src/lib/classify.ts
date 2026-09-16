@@ -107,7 +107,7 @@ export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = f
   const client = new Anthropic();
 
   const candidates = await prisma.item.findMany({
-    where: { divisionId: "none" },
+    where: { divisionId: "none", classifiedAt: null },
     orderBy: [{ commentDueAt: "asc" }, { createdAt: "desc" }],
     take: limit,
     select: { id: true, docket: true, title: true, agency: true, topics: true, abstract: true },
@@ -132,13 +132,21 @@ export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = f
           docket: r.docket, title: item.title.slice(0, 110),
           division: r.division, confidence: r.confidence, reason: r.reason, applied: !skip && !dryRun,
         });
-        if (skip || dryRun) { leftAlone++; continue; }
+        if (dryRun) { leftAlone++; continue; }
+        if (skip) {
+          await prisma.item.update({ where: { id: item.id }, data: { classifiedAt: new Date() } });
+          leftAlone++;
+          continue;
+        }
         // Re-read: a person may have filed this item while the batch was in flight.
         const fresh = await prisma.item.findUnique({ where: { id: item.id }, select: { divisionId: true } });
         if (!fresh || fresh.divisionId !== "none") { leftAlone++; continue; }
 
         await prisma.$transaction([
-          prisma.item.update({ where: { id: item.id }, data: { divisionId: r.division } }),
+          prisma.item.update({
+            where: { id: item.id },
+            data: { divisionId: r.division, classifiedAt: new Date() },
+          }),
           prisma.audit.create({
             data: { itemId: item.id, actor: "classifier", field: "division",
                     fromValue: "Unassigned", toValue: r.division },

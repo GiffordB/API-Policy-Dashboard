@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
       people: await prisma.person.count(),
       unowned,
       openCommentWindows: openWindows,
+      awaitingClassifier: await prisma.item.count({ where: { divisionId: "none", classifiedAt: null } }),
       byDivision: Object.fromEntries(byDivision.map((r) => [nameOf[r.divisionId] ?? r.divisionId, r._count])),
       byTrack: Object.fromEntries(byTrack.map((r) => [r.track, r._count])),
     },

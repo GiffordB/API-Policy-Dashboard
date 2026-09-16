@@ -92,6 +92,7 @@ model Item {
   draftState String?                       // "Draft with counsel", "No draft started"
 
   abstract      String?                       // the agency's own summary
+  classifiedAt  DateTime?                     // the classifier has judged this, filed or not
   publishedOn   DateTime?                     // as printed in the Federal Register
   source        SourceKind @default(MANUAL)
   sourceUrl     String?
