@@ -68,12 +68,29 @@ export function defaultWatches() {
   });
 
   // Starter terms. These reach beyond the agency sweep, which is the point.
+  //
+  // Two vocabularies, deliberately. A rulemaking is titled in programme language
+  // ("Class VI injection wells"); a bill is titled in political language ("the
+  // Natural Gas Tax Repeal Act"). A term list written for one finds nothing in
+  // the other — the first Congress run checked 854 bills and matched none.
   const terms = [
     ["class VI injection well", "Class VI injection wells", "Carbon sequestration wells, wherever they are published. The bare phrase \u201cclass VI\u201d also matches FDA device classes, so the term is narrowed.", "up"],
     ["hydraulic fracturing", "Hydraulic fracturing", null, "up"],
     ["liquefied natural gas", "LNG", null, "gas"],
     ["pipeline safety", "Pipeline safety", null, "mid"],
     ["petroleum refinery", "Refineries", null, "down"],
+
+    // Bill-title language. Broader on purpose: the classifier is the second
+    // gate, so a wide net here costs a little filing and misses less.
+    ["oil and gas", "Oil and gas (bills)", "Bill titles rarely use programme language.", "up"],
+    ["natural gas", "Natural gas (bills)", null, "gas"],
+    ["pipeline", "Pipelines (bills)", null, "mid"],
+    ["crude oil", "Crude oil (bills)", null, "down"],
+    ["methane", "Methane (bills)", null, "up"],
+    ["offshore", "Offshore (bills)", "Also catches offshore wind; the classifier sorts it out.", "up"],
+    ["refinery", "Refineries (bills)", null, "down"],
+    ["permitting", "Permitting (bills)", null, "corp"],
+    ["energy security", "Energy security (bills)", null, "corp"],
   ].map(([value, label, note, dv]) => ({
     kind: WatchKind.TERM,
     value: value as string,
