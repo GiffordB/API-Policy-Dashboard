@@ -1,18 +1,17 @@
 # Render blueprint: the database and the collector agents.
-# The Next.js dashboard itself deploys to Vercel and reads the same DATABASE_URL.
+# The Next.js dashboard deploys to Vercel and reads the same DATABASE_URL.
 #
-# Plan IDs come from https://render.com/docs/blueprint-spec — they are compute
-# shapes, not tier names. An invalid plan makes Render reject the whole file,
-# and the Apply button never appears.
+# Plan IDs are compute shapes (0.1c-256mb), not tier names. An invalid plan
+# makes Render reject the whole file and the Apply button never appears.
 
 databases:
   - name: policy-radar-db
     databaseName: policy_radar
-    # 0.1 CPU, 256 MB. The smallest paid Postgres. Use `free` to trial it, but
-    # Render deletes free instances after 30 days and the data goes with them.
+    # 0.1 CPU, 256 MB — the smallest paid Postgres. `free` works for a trial,
+    # but Render deletes free instances after 30 days and the data goes too.
     plan: 0.1c-256mb
-    # Put this in the same region as your Vercel deployment. Every page load
-    # queries the database, so distance is latency on every request.
+    # Same region as the Vercel deployment. Every page load queries the
+    # database, so distance is latency on every request.
     region: ohio
 
 services:
@@ -21,13 +20,28 @@ services:
     runtime: node
     plan: 0.5c-512mb
     region: ohio
-    # Hourly, on the hour. The Federal Register publishes in a batch each
-    # weekday morning, so more often than this buys very little.
+    # Hourly, on the hour.
+    #
+    # The Federal Register publishes one issue per business day, so most runs
+    # find nothing new. That is fine — the run is cheap and a same-day deadline
+    # extension is worth catching within the hour. If you would rather not pay
+    # for the quiet runs, "0 11,14,17,20 * * 1-5" covers the working day.
     schedule: "0 * * * *"
     buildCommand: npm ci && npx prisma generate
-    startCommand: npm run collect
+    # Three days, not thirty. An hourly job only needs to see what is new, and
+    # a 30-day window re-reads a thousand documents every time for nothing.
+    # Use `npm run collect -- 60` by hand for a backfill.
+    startCommand: npm run collect -- 3
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: policy-radar-db
           property: connectionString
+      # File new arrivals in the same run. Remove these two to keep the
+      # collector free and file by hand from the dashboard instead.
+      - key: CLASSIFY_AFTER_COLLECT
+        value: "1"
+      - key: CLASSIFY_CAP
+        value: "25"
+      - key: ANTHROPIC_API_KEY
+        sync: false          # paste it in the Render dashboard, not in git
