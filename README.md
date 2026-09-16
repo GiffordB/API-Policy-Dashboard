@@ -33,11 +33,30 @@ bucket for records the collectors could not confidently route.
 | OIRA / EO 12866 pipeline | not written |
 | Division analyst agents | not written |
 
-**Division routing is keyword-based and it is not very good.** About a third of
-incoming records route confidently; the rest land in Unassigned for a human to
-file. That is deliberate — a wrong division is worse than an honest blank. The
-real fix is an LLM classifier reading the title and abstract, which is the first
-analyst agent to write.
+### Division routing, in two passes
+
+**Pass one is keyword rules** (`src/lib/routing.ts`), run by the collector. On a
+real 60-day pull it filed about 40% of records. The rest land in **Unassigned**,
+because a wrong division is worse than an honest blank — a wrong one looks filed
+and nobody checks it again.
+
+**Pass two is the classifier** (`src/lib/classify.ts`), which reads the
+Unassigned pile and files what it can. It needs `ANTHROPIC_API_KEY`.
+
+```bash
+curl -X POST "https://YOUR-APP.vercel.app/api/admin/classify?limit=60" \
+  -H "x-collect-secret: $COLLECT_SECRET"
+```
+
+Three rules make it safe to run unattended:
+
+1. It only reads items in Unassigned. A division a person chose is never touched.
+2. Low confidence means it leaves the item alone.
+3. It writes its reasoning into the item's findings, so a bad call can be seen
+   and corrected rather than argued about.
+
+It re-reads each item immediately before writing, so a person filing an item by
+hand while a batch is in flight always wins.
 
 ## Setup, locally
 
