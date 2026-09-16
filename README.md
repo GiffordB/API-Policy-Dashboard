@@ -83,6 +83,18 @@ Jane Doe,jane@example.org,up,y,
 `division` is one of `up`, `mid`, `down`, `gas`, `corp`. `lead` marks the
 division lead. `litigation` marks who owns court items in that division.
 
+### Checking what the server actually has
+
+```bash
+curl https://YOUR-APP.vercel.app/api/admin/status -H "x-collect-secret: $COLLECT_SECRET"
+```
+
+Reports which environment variables the running server can see — presence only,
+never values — plus record counts and the last five agent runs. A Vercel
+environment variable only reaches a **new** deployment, so "saved in the
+dashboard" and "visible to the server" are different facts. This reports the
+second one, which is the one that matters.
+
 ### Checking the collector without a database
 
 ```bash
