@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { collectFederalRegister } from "@/lib/collect";
 import { collectCongress } from "@/lib/collect-congress";
+import { collectRegulations } from "@/lib/collect-regulations";
 
 export const maxDuration = 300;
 
@@ -19,12 +20,16 @@ export async function POST(req: NextRequest) {
   try {
     if (source === "federal") return NextResponse.json({ federalRegister: await collectFederalRegister(d) });
     if (source === "congress") return NextResponse.json({ congress: await collectCongress(d) });
+    if (source === "regulations") return NextResponse.json({ regulations: await collectRegulations() });
 
-    // Both, and one failing source must not hide the other's result.
-    const [fr, cg] = await Promise.allSettled([collectFederalRegister(d), collectCongress(d)]);
+    // All of them, and one failing source must not hide another's result.
+    const [fr, cg, rg] = await Promise.allSettled([
+      collectFederalRegister(d), collectCongress(d), collectRegulations(),
+    ]);
+    const val = (r: PromiseSettledResult<unknown>) =>
+      r.status === "fulfilled" ? r.value : { error: String((r.reason as Error)?.message ?? r.reason) };
     return NextResponse.json({
-      federalRegister: fr.status === "fulfilled" ? fr.value : { error: String(fr.reason?.message ?? fr.reason) },
-      congress: cg.status === "fulfilled" ? cg.value : { error: String(cg.reason?.message ?? cg.reason) },
+      federalRegister: val(fr), congress: val(cg), regulations: val(rg),
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 500 });

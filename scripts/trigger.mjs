@@ -60,6 +60,7 @@ function report(label, r) {
 let failures = 0;
 report("Federal Register", c.federalRegister ?? c);
 report("Congress", c.congress);
+report("Regulations.gov", c.regulations);
 
 if (classify) {
   const k = await call(`/api/admin/classify?limit=${classifyCap}`, "classify");

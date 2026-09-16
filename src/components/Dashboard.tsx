@@ -367,6 +367,11 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                             <div className="due" style={{ color: "var(--muted)" }}>comments closed</div>
                           ) : <div className="due" style={{ color: "var(--ink-2)" }}>—</div>}
                           <div className="it-dock" style={{ marginTop: 4 }}>{it.nextLabel}</div>
+                          {it.commentCount !== null && it.commentCount > 0 && (
+                            <div className="it-dock" style={{ marginTop: 3, color: "var(--ink-2)" }}>
+                              {it.commentCount.toLocaleString()} comment{it.commentCount === 1 ? "" : "s"} filed
+                            </div>
+                          )}
                         </td>
                         <td>
                           <PriorityChip item={it} onClick={() => {
@@ -895,6 +900,37 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
                 <div className="who">{item.lastFinding.source.replace(/_/g, " ").toLowerCase()} · {fmtDate(item.lastFinding.foundAt)}</div>
                 {item.lastFinding.summary}
               </div>
+            </div>
+          )}
+
+          {item.commentCount !== null && (
+            <div className="dsec">
+              <div className="dt">Comments filed</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 9 }}>
+                <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em" }}>
+                  {item.commentCount.toLocaleString()}
+                </span>
+                <span className="note">on this docket, as Regulations.gov counts them</span>
+              </div>
+              {item.recentCommenters?.length ? (
+                <>
+                  <div className="audit">
+                    {item.recentCommenters.map((c, n) => (
+                      <div className="aud" key={n}>
+                        <span className="when">{c.postedDate}</span>
+                        <span className="what"><b>{c.submitter}</b>{c.title ? ` — ${c.title}` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="note" style={{ margin: "9px 0 0" }}>
+                    The five most recent.{" "}
+                    <a href={`https://www.regulations.gov/docket/${encodeURIComponent(item.docket)}/comments`}
+                       target="_blank" rel="noreferrer">Read them on Regulations.gov</a>
+                  </p>
+                </>
+              ) : (
+                <p className="note" style={{ margin: 0 }}>Nobody has filed yet.</p>
+              )}
             </div>
           )}
 

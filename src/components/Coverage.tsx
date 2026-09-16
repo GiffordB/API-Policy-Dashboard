@@ -157,10 +157,9 @@ export default function Coverage({ data }: { data: CoverageData }) {
         })}
 
         <section className="panel" style={{ marginTop: 18 }} aria-label="Not connected yet">
-          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">3 sources</span></div>
+          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">2 sources</span></div>
           <div className="agents">
             {[
-              ["Regulations.gov", "Comments actually filed on a docket, including who filed against you.", "not written yet — the key is already in place"],
               ["Open States", "Bills in all 50 state legislatures.", "needs a free Open States key"],
               ["CourtListener", "Federal dockets and opinions.", "needs a free CourtListener token"],
             ].map(([nm, what, why]) => (

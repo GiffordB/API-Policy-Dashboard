@@ -62,7 +62,7 @@ the Federal Register for it now, or watch for it from now on.
 |---|---|
 | Federal Register | live |
 | Congress.gov (bills) | live |
-| Regulations.gov (dockets, filed comments) | not written; the key is in place |
+| Regulations.gov (filed comments) | live |
 | Open States (state bills) | needs `OPENSTATES_API_KEY` |
 | CourtListener (dockets) | needs `COURTLISTENER_TOKEN` |
 | OIRA / EO 12866 pipeline | not written |

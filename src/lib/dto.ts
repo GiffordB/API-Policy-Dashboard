@@ -14,6 +14,8 @@ export type ItemDTO = {
   positionSetBy: string | null; positionSetAt: string | null;
   topics: string[]; standards: string[]; draftState: string | null;
   sourceUrl: string | null; frCitation: string | null; abstract: string | null;
+  commentCount: number | null;
+  recentCommenters: { submitter: string; postedDate: string; title: string }[] | null;
   lastFinding: { summary: string; source: string; foundAt: string } | null;
 };
 export type PersonDTO = { id: string; name: string; divisionId: string };
@@ -72,6 +74,8 @@ export async function loadDashboard() {
       positionSetAt: i.positionSetAt?.toISOString() ?? null,
       topics: i.topics, standards: i.standards, draftState: i.draftState,
       sourceUrl: i.sourceUrl, frCitation: i.frCitation, abstract: i.abstract,
+      commentCount: i.commentCount,
+      recentCommenters: (i.recentCommenters as ItemDTO["recentCommenters"]) ?? null,
       lastFinding: i.findings[0]
         ? { summary: i.findings[0].summary, source: i.findings[0].source, foundAt: i.findings[0].foundAt.toISOString() }
         : null,
