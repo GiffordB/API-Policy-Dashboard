@@ -49,6 +49,9 @@ export async function GET(req: NextRequest) {
       openCommentWindows: openWindows,
       awaitingClassifier: await prisma.item.count({ where: { divisionId: "none", classifiedAt: null } }),
       archived: await prisma.item.count({ where: { archivedAt: { not: null } } }),
+      docketsWithCommentCounts: await prisma.item.count({ where: { commentCount: { not: null } } }),
+      commentsFiledTotal:
+        (await prisma.item.aggregate({ _sum: { commentCount: true } }))._sum.commentCount ?? 0,
       byDivision: Object.fromEntries(byDivision.map((r) => [nameOf[r.divisionId] ?? r.divisionId, r._count])),
       byTrack: Object.fromEntries(byTrack.map((r) => [r.track, r._count])),
     },
