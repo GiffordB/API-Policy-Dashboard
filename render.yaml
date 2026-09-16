@@ -1,17 +1,16 @@
-# Render blueprint: the collector agent only.
+# Render blueprint: the scheduled collection.
 #
-# The database is NOT declared here, on purpose.
+# This job does NOT talk to the database. It asks the app to collect, over
+# HTTP, with the shared secret.
 #
-# An earlier version of this file declared its own Postgres instance and wired
-# DATABASE_URL to it with `fromDatabase`. Render then created a second, empty
-# database and re-pointed the job at it on every sync — silently reverting the
-# value set in the dashboard. The app was on one database, the collector on
-# another, and the job failed with a missing-table error that read like a broken
-# migration.
+# An earlier version ran the collector here, which meant this job needed its own
+# DATABASE_URL. A blueprint-declared database then re-pointed that variable on
+# every sync, the app and the collector ended up on different databases, and the
+# failure surfaced as a missing table — which reads like a broken migration
+# rather than a wiring mistake. Two places knowing how to reach the database was
+# the root cause, so now only one does.
 #
-# So the database stays outside the blueprint, and DATABASE_URL is `sync: false`:
-# Render never touches it, and the value you set in the dashboard is the value
-# the job uses. Point it at the same database the Vercel project uses.
+# This job knows two things: where the app is, and the shared secret.
 
 services:
   - type: cron
@@ -19,25 +18,22 @@ services:
     runtime: node
     plan: 0.5c-512mb
     region: ohio
-    # Hourly, on the hour, in UTC.
-    #
-    # The Federal Register publishes one issue per business day, so most runs
-    # find nothing new. That is fine — the run is cheap and a same-day deadline
-    # extension is worth catching within the hour. To skip the quiet overnight
-    # runs, "0 11,14,17,20 * * 1-5" covers the working day in four.
+    # Hourly, on the hour, in UTC. The Federal Register publishes one issue per
+    # business day, so most runs find nothing — that is fine, they cost seconds.
+    # To skip the quiet overnight runs: "0 11,14,17,20 * * 1-5".
     schedule: "0 * * * *"
-    buildCommand: npm ci && npx prisma generate
-    # Three days, not thirty. An hourly job only needs to see what is new.
-    # Use `npm run collect -- 60` by hand for a backfill.
-    startCommand: npm run collect -- 3
+    # Nothing to build. The script is plain Node with no dependencies.
+    buildCommand: "echo no build needed"
+    startCommand: node scripts/trigger.mjs
     envVars:
-      # Every one of these is set in the Render dashboard, never in git.
-      - key: DATABASE_URL
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      # File new arrivals in the same run. Remove these two to keep the
-      # collector free and file by hand from the dashboard instead.
+      - key: APP_URL
+        sync: false          # https://your-app.vercel.app
+      - key: COLLECT_SECRET
+        sync: false          # the same value as the Vercel project
+      - key: COLLECT_DAYS
+        value: "3"
+      # File new arrivals in the same run. The Anthropic key lives on the app,
+      # not here — this job never needs it.
       - key: CLASSIFY_AFTER_COLLECT
         value: "1"
       - key: CLASSIFY_CAP
