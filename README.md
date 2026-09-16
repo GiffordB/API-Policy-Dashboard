@@ -39,12 +39,12 @@ file. That is deliberate — a wrong division is worse than an honest blank. The
 real fix is an LLM classifier reading the title and abstract, which is the first
 analyst agent to write.
 
-## Setup
+## Setup, locally
 
 ```bash
 cp .env.example .env          # fill in DATABASE_URL at minimum
 npm install
-npm run db:push               # create the tables
+npm run db:deploy             # apply the migration
 npm run seed                  # divisions, then the roster
 npm run collect -- 60         # pull 60 days from the Federal Register
 npm run dev
@@ -76,8 +76,25 @@ whenever you change the agency list or the routing rules.
 
 ## Deploying
 
-**The app → Vercel.** Import the repo, set `DATABASE_URL`, `APP_PASSWORD` and
-`COLLECT_SECRET`. Build command is `npm run build` (it runs `prisma generate`).
+**The app → Vercel.** Import the repo and set `DATABASE_URL`, `APP_PASSWORD`
+and `COLLECT_SECRET`. The build command runs `prisma migrate deploy`, so the
+first deploy creates the tables by itself. You never need a database shell.
+
+Then seed and collect over HTTP:
+
+```bash
+# divisions and the roster. Send the CSV as the body.
+curl -X POST https://YOUR-APP.vercel.app/api/admin/seed \
+  -H "x-collect-secret: $COLLECT_SECRET" \
+  --data-binary @data/roster.csv
+
+# the first collection
+curl -X POST "https://YOUR-APP.vercel.app/api/collect?days=60" \
+  -H "x-collect-secret: $COLLECT_SECRET"
+```
+
+Both are safe to run again. The seed upserts, and the collector only writes
+what changed.
 
 **The database and the collectors → Render.** `render.yaml` declares a Postgres
 instance and a cron job that runs `npm run collect` every 30 minutes. The
