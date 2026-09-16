@@ -207,19 +207,24 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
   return (
     <>
-      <Header actor={actor} people={people} onActor={changeActor} query={query} onQuery={setQuery} busy={busy} />
+      <Header actor={actor} people={people} onActor={changeActor} query={query} onQuery={setQuery}
+              busy={busy} hits={searching ? visible.length : null} />
 
       <div className="wrap">
-        <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
+        {/* A search is a question asked at the top of the page. Everything
+            between the box and the answer gets out of the way, so the results
+            appear where you are looking instead of a thousand pixels below. */}
+        {!searching && (
+          <>
+            <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
+            <DeadlinePanel list={deadlines} DIV={DIV} />
+            <DivisionBar divisions={divisions} items={items.filter(live)} active={division}
+                         onPick={(id) => { setDivision(id); setTopic("All"); }} />
+            <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
+          </>
+        )}
 
-        <DeadlinePanel list={deadlines} DIV={DIV} />
-
-        <DivisionBar divisions={divisions} items={items.filter(live)} active={division}
-                     onPick={(id) => { setDivision(id); setTopic("All"); }} />
-
-        <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
-
-        <div className="main">
+        <div className="main" style={searching ? { marginTop: 18, gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <section className="panel" aria-label="Tracked items">
             <div className="panel-hd" style={{ borderBottom: 0, paddingBottom: 2 }}>
               <h2>{searching ? "Search results" : "Tracked items"}</h2>
@@ -354,10 +359,12 @@ export default function Dashboard({ data }: { data: DashboardData }) {
             )}
           </section>
 
-          <RightRail items={scoped} DIV={DIV} runs={runs} division={division} onJump={jump} />
+          {!searching && (
+            <RightRail items={scoped} DIV={DIV} runs={runs} division={division} onJump={jump} />
+          )}
         </div>
 
-        <MonthlyChart monthly={monthly} divisions={divisions} active={division} />
+        {!searching && <MonthlyChart monthly={monthly} divisions={divisions} active={division} />}
 
         <footer>
           <b>Pilot.</b> Federal Register records are live. Congress, state legislatures and the courts are not
@@ -392,9 +399,11 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 /* pieces                                                             */
 /* ------------------------------------------------------------------ */
 
-function Header({ actor, people, onActor, query, onQuery, busy }: {
+function Header({ actor, people, onActor, query, onQuery, busy, hits }: {
   actor: string; people: PersonDTO[]; onActor: (n: string) => void;
   query: string; onQuery: (q: string) => void; busy: boolean;
+  /** Result count, shown beside the box so a search answers where you typed it. */
+  hits: number | null;
 }) {
   const names = [...new Set(people.map((p) => p.name))].sort();
   return (
@@ -412,6 +421,12 @@ function Header({ actor, people, onActor, query, onQuery, busy }: {
           </svg>
           <input value={query} onChange={(e) => onQuery(e.target.value)} type="search"
                  placeholder="Search dockets, bills, keywords" autoComplete="off" />
+          {hits !== null && (
+            <span style={{ flex: "none", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
+                           color: hits ? "var(--accent)" : "var(--critical)" }}>
+              {hits} {hits === 1 ? "result" : "results"}
+            </span>
+          )}
         </label>
         <Link href="/coverage" className="chip" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
           What we watch
