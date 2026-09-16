@@ -69,7 +69,7 @@ export function defaultWatches() {
 
   // Starter terms. These reach beyond the agency sweep, which is the point.
   const terms = [
-    ["class VI", "Class VI injection wells", "Carbon sequestration wells, wherever they are published.", "up"],
+    ["class VI injection well", "Class VI injection wells", "Carbon sequestration wells, wherever they are published. The bare phrase \u201cclass VI\u201d also matches FDA device classes, so the term is narrowed.", "up"],
     ["hydraulic fracturing", "Hydraulic fracturing", null, "up"],
     ["liquefied natural gas", "LNG", null, "gas"],
     ["pipeline safety", "Pipeline safety", null, "mid"],

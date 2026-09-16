@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod/v4";
 import { prisma } from "@/lib/prisma";
-import { SourceKind } from "@prisma/client";
+import { Priority, SourceKind } from "@prisma/client";
 
 /**
  * Files records the keyword rules could not place.
@@ -102,19 +102,19 @@ export type Decision = {
   docket: string; title: string; division: string; confidence: string; reason: string; applied: boolean;
 };
 
-export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = false) {
+export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = false, recheck = false) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
   const client = new Anthropic();
 
   const candidates = await prisma.item.findMany({
-    where: { divisionId: "none", classifiedAt: null },
+    where: recheck ? { divisionId: "none" } : { divisionId: "none", classifiedAt: null },
     orderBy: [{ commentDueAt: "asc" }, { createdAt: "desc" }],
     take: limit,
     select: { id: true, docket: true, title: true, agency: true, topics: true, abstract: true },
   });
 
   const run = dryRun ? null : await prisma.agentRun.create({ data: { source: SourceKind.MANUAL } });
-  let filed = 0, leftAlone = 0, checked = 0;
+  let filed = 0, leftAlone = 0, ghosted = 0, checked = 0;
   const decisions: Decision[] = [];
 
   try {
@@ -127,12 +127,46 @@ export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = f
         const item = batch.find((c) => c.docket === r.docket);
         if (!item) continue;
 
+        // A confident "none" is a judgement, not a shrug: this is not the
+        // association's work. Ghost it, using the same flag a person would.
+        // An unsure "none" stays in Unassigned for a human to look at.
+        const ghost = r.division === "none" && r.confidence === "high";
         const skip = r.division === "none" || r.confidence === "low";
         decisions.push({
           docket: r.docket, title: item.title.slice(0, 110),
-          division: r.division, confidence: r.confidence, reason: r.reason, applied: !skip && !dryRun,
+          division: r.division, confidence: r.confidence, reason: r.reason,
+          applied: (!skip || ghost) && !dryRun,
         });
         if (dryRun) { leftAlone++; continue; }
+
+        if (ghost) {
+          const fresh = await prisma.item.findUnique({
+            where: { id: item.id }, select: { divisionId: true, priority: true },
+          });
+          // Never override a priority a person set.
+          if (!fresh || fresh.divisionId !== "none" || fresh.priority !== Priority.MEDIUM) {
+            await prisma.item.update({ where: { id: item.id }, data: { classifiedAt: new Date() } });
+            leftAlone++;
+            continue;
+          }
+          await prisma.$transaction([
+            prisma.item.update({
+              where: { id: item.id },
+              data: { priority: Priority.NOT_RELEVANT, priorityConfirmed: false, classifiedAt: new Date() },
+            }),
+            prisma.audit.create({
+              data: { itemId: item.id, actor: "classifier", field: "priority",
+                      fromValue: "Medium", toValue: "Not relevant" },
+            }),
+            prisma.finding.create({
+              data: { itemId: item.id, source: SourceKind.MANUAL,
+                      summary: `Marked not relevant by the classifier. ${r.reason} Set a priority to bring it back.` },
+            }),
+          ]);
+          ghosted++;
+          continue;
+        }
+
         if (skip) {
           await prisma.item.update({ where: { id: item.id }, data: { classifiedAt: new Date() } });
           leftAlone++;
@@ -163,7 +197,7 @@ export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = f
       where: { id: run.id },
       data: { finishedAt: new Date(), ok: true, checked, changed: filed, created: 0 },
     });
-    return { dryRun, checked, filed, leftAlone, decisions };
+    return { dryRun, checked, filed, ghosted, leftAlone, decisions };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (run) await prisma.agentRun.update({

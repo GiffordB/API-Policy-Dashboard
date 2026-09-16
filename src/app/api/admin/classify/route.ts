@@ -11,8 +11,9 @@ export async function POST(req: NextRequest) {
 
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? 60);
   const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
+  const recheck = req.nextUrl.searchParams.get("recheck") === "1";
   try {
-    return NextResponse.json(await classifyUnassigned(Number.isFinite(limit) ? limit : 60, 12, dryRun));
+    return NextResponse.json(await classifyUnassigned(Number.isFinite(limit) ? limit : 60, 12, dryRun, recheck));
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 500 });
   }
