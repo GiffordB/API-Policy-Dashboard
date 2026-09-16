@@ -6,8 +6,12 @@
 
 const BASE = "https://www.federalregister.gov/api/v1/documents.json";
 
-/** Agency slugs the policy team cares about, as the Federal Register spells them. */
-export const WATCHED_AGENCIES = [
+/**
+ * The agencies a fresh install starts with. These are seeded into the watchlist
+ * and are editable from the coverage page afterwards — the live list comes from
+ * the database, not from here.
+ */
+export const DEFAULT_AGENCIES = [
   "environmental-protection-agency",
   "pipeline-and-hazardous-materials-safety-administration",
   "federal-energy-regulatory-commission",
@@ -60,12 +64,17 @@ function url(params: Record<string, string | string[]>) {
  * Everything published by a watched agency since `since` (YYYY-MM-DD).
  * Follows pagination up to `maxPages` so one run cannot hang on a huge window.
  */
-export async function fetchRecent(since: string, maxPages = 10): Promise<FrDoc[]> {
+export async function fetchRecent(
+  since: string,
+  agencies: string[] = DEFAULT_AGENCIES as unknown as string[],
+  maxPages = 10
+): Promise<FrDoc[]> {
+  if (!agencies.length) return [];
   const out: FrDoc[] = [];
   for (let page = 1; page <= maxPages; page++) {
     const u = url({
       "conditions[publication_date][gte]": since,
-      "conditions[agencies][]": WATCHED_AGENCIES as unknown as string[],
+      "conditions[agencies][]": agencies,
       "conditions[type][]": TYPES as unknown as string[],
       "fields[]": FIELDS,
       per_page: "100",
@@ -153,10 +162,13 @@ export function agencyShortName(doc: FrDoc): string {
 /**
  * Routine paperwork the policy team never acts on. The Federal Register is
  * mostly this: exchange rule filings, information-collection renewals,
- * meeting notices, individual licence applications. Dropping it here is the
+ * meeting notices, individual licence applications. Dropping it is the
  * difference between a dashboard and a firehose.
+ *
+ * These seed the watchlist as EXCLUDE entries. The live list comes from the
+ * database, so a person can see every rule and switch one off.
  */
-const NOISE = [
+export const DEFAULT_EXCLUDES = [
   /self-regulatory organizations?/i,
   /order granting (exemptive relief|approval of a proposed rule change|petitions?)/i,
   /(agency )?information collection (activities|request)/i,
@@ -175,9 +187,27 @@ const OFF_TOPIC_DOCKET = /^EPA-HQ-OPP-/i;            // pesticides
 /** A single company's own filing, not a policy proceeding. */
 const SINGLE_PARTY = /^[A-Z][\w.,& '-]+(?:Inc\.|LLC|L\.L\.C\.|Corporation|Company|Corp\.|L\.P\.|Partners);/;
 
-export function isNoise(doc: FrDoc): boolean {
+/** Everything a docket search needs: one docket, however it is titled. */
+export async function fetchByDocket(docketId: string, limit = 20): Promise<FrDoc[]> {
+  const u = url({
+    "conditions[docket_id]": docketId,
+    "fields[]": FIELDS,
+    per_page: String(limit),
+    order: "newest",
+  });
+  const res = await fetch(u, { headers: { accept: "application/json" }, cache: "no-store" });
+  if (!res.ok) throw new Error(`Federal Register ${res.status}`);
+  const json = (await res.json()) as { results?: FrDoc[] };
+  return json.results ?? [];
+}
+
+/**
+ * @param excludes title patterns from the watchlist. Defaults to the built-in
+ * list so the smoke script and a fresh database still behave sensibly.
+ */
+export function isNoise(doc: FrDoc, excludes: RegExp[] = DEFAULT_EXCLUDES): boolean {
   const t = doc.title ?? "";
-  if (NOISE.some((re) => re.test(t))) return true;
+  if (excludes.some((re) => re.test(t))) return true;
   if (SINGLE_PARTY.test(t)) return true;
   if ((doc.docket_ids ?? []).some((d) => OFF_TOPIC_DOCKET.test(d))) return true;
   // A notice with no comment period is almost never work for a policy team.

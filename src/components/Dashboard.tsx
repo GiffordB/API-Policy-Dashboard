@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { DashboardData, ItemDTO, PersonDTO } from "@/lib/dto";
 
 /* ------------------------------------------------------------------ */
@@ -269,6 +270,12 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                       <button className="addbtn" style={{ marginLeft: 8 }} onClick={() => setAdding(true)}>
                         {searching ? `Search the Federal Register for “${query}”` : "+ Track a new item"}
                       </button>
+                      {searching && (
+                        <Link className="addbtn" style={{ marginLeft: 8, textDecoration: "none" }}
+                              href={`/coverage?add=${encodeURIComponent(query.trim())}`}>
+                          Watch for “{query.trim()}” from now on
+                        </Link>
+                      )}
                     </td></tr>
                   ) : visible.map((it) => {
                     const d = DIV[it.divisionId], u = urgency(it.days);
@@ -381,6 +388,9 @@ function Header({ actor, people, onActor, query, onQuery, busy }: {
           <input value={query} onChange={(e) => onQuery(e.target.value)} type="search"
                  placeholder="Search dockets, bills, keywords" autoComplete="off" />
         </label>
+        <Link href="/coverage" className="chip" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+          What we watch
+        </Link>
         <span className="actas">
           Acting as
           <select value={actor} onChange={(e) => onActor(e.target.value)} aria-label="Acting as">

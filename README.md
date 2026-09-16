@@ -8,6 +8,29 @@ The page is organised around five policy divisions — Upstream, Midstream,
 Downstream, Natural Gas Markets and Corporate Policy — plus an **Unassigned**
 bucket for records the collectors could not confidently route.
 
+## The coverage page
+
+`/coverage` is the answer to "what do we actually scrape the federal sites for".
+
+It lists, as live records rather than as constants in source:
+
+- **Agencies swept** — every document these agencies publish is read each run.
+- **Terms we always search** — searched across the whole Federal Register,
+  including agencies not on the swept list. This is how something outside the
+  usual sources still reaches you.
+- **Dockets we follow** — pinned by number, followed whatever the documents in
+  them are titled. Exclusion patterns never apply to a pinned docket.
+- **Dropped on purpose** — the noise patterns, each with a plain reason. Two
+  thirds of the Federal Register is routine paperwork; this is where you can
+  see exactly what is being thrown away and switch a rule off.
+
+Each row shows what it found on the last run and how many held records it
+brought in, so a term has to earn its place. Nothing is deleted — pausing an
+entry stops future runs using it and keeps the record of what it found.
+
+When a dashboard search finds nothing, the empty state offers two things: search
+the Federal Register for it now, or watch for it from now on.
+
 ## What works today
 
 - **Federal Register collector.** Live, no API key. Runs on a schedule, creates

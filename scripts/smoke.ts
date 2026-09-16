@@ -12,7 +12,7 @@ const days = Number(process.argv[2] ?? 14);
 const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
 (async () => {
-  const all = await fetchRecent(since, 3);
+  const all = await fetchRecent(since, undefined, 3);
   const docs = all.filter((d) => !isNoise(d));
   console.log(`Federal Register: ${all.length} documents since ${since}`);
   console.log(`routine paperwork dropped: ${all.length - docs.length}`);

@@ -41,6 +41,7 @@ model Division {
   sortOrder Int
   people    Person[]
   items     Item[]
+  watches   Watch[]
   createdAt DateTime @default(now())
 }
 
@@ -59,6 +60,40 @@ model Person {
 
   @@unique([name, divisionId])
   @@index([divisionId])
+}
+
+/// What the collectors look for. Editing this changes what gets scraped,
+/// which is why it lives in the database and on a page rather than in source.
+enum WatchKind {
+  AGENCY    // sweep everything this agency publishes
+  TERM      // search these words on every run
+  DOCKET    // pin one docket and follow it whatever it is called
+  EXCLUDE   // drop anything whose title matches this pattern
+}
+
+model Watch {
+  id         String     @id @default(cuid())
+  kind       WatchKind
+  value      String                    // the slug, the phrase, the docket, the regex
+  label      String                    // what a person calls it
+  note       String?                   // why it is on the list
+  source     SourceKind @default(FEDERAL_REGISTER)
+  divisionId String?
+  division   Division?  @relation(fields: [divisionId], references: [id])
+  active     Boolean    @default(true)
+  addedBy    String     @default("setup")
+
+  // Proof of worth, written by each collector run.
+  lastRunAt  DateTime?
+  lastHits   Int        @default(0)
+  totalHits  Int        @default(0)
+
+  found      Item[]     @relation("foundBy")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([kind, value])
+  @@index([active, kind])
 }
 
 model Item {
@@ -92,6 +127,8 @@ model Item {
   draftState String?                       // "Draft with counsel", "No draft started"
 
   abstract      String?                       // the agency's own summary
+  foundByWatchId String?
+  foundBy       Watch?  @relation("foundBy", fields: [foundByWatchId], references: [id])
   classifiedAt  DateTime?                     // the classifier has judged this, filed or not
   publishedOn   DateTime?                     // as printed in the Federal Register
   source        SourceKind @default(MANUAL)
