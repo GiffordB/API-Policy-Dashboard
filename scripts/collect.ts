@@ -14,7 +14,34 @@ import { prisma } from "../src/lib/prisma";
 const days = Number(process.argv[2] ?? 3);
 const CLASSIFY_CAP = Number(process.env.CLASSIFY_CAP ?? 25);
 
+/** Host and database name only — never the credentials. */
+function whichDatabase(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) return "DATABASE_URL is not set";
+  try {
+    const u = new URL(url);
+    return `${u.hostname}${u.pathname}`;
+  } catch { return "DATABASE_URL is not a valid URL"; }
+}
+
 async function main() {
+  console.log(`database: ${whichDatabase()}`);
+
+  // A job pointed at the wrong database fails deep inside Prisma with a missing
+  // table. Say so here instead, in a sentence that names the cause.
+  const ready = await prisma.division.count().catch(() => null);
+  if (ready === null) {
+    throw new Error(
+      `This database has no Policy Radar tables. The job is pointed at the wrong one. ` +
+      `Copy DATABASE_URL from the Vercel project, which is the database the app uses.`
+    );
+  }
+  if (ready === 0) {
+    throw new Error(
+      `This database has tables but no divisions. Run the seed endpoint before collecting.`
+    );
+  }
+
   const r = await collectFederalRegister(days);
   console.log(
     `Federal Register (${days}d): checked ${r.checked}, created ${r.created}, ` +
