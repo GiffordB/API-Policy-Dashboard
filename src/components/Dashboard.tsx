@@ -18,6 +18,15 @@ const PRIORITIES = [
 ] as const;
 const PRI = Object.fromEntries(PRIORITIES.map((p) => [p.id, p]));
 
+const POSITIONS = [
+  { id: "PENDING", nm: "No position yet", sig: "–" },
+  { id: "SUPPORT", nm: "Support",         sig: "+" },
+  { id: "OPPOSE",  nm: "Oppose",          sig: "\u2212" },
+  { id: "AMEND",   nm: "Amend",           sig: "\u00b1" },
+  { id: "MONITOR", nm: "Monitor",         sig: "\u25cb" },
+] as const;
+const POS = Object.fromEntries(POSITIONS.map((p) => [p.id, p]));
+
 const TABS = [
   { id: "FEDERAL",  label: "Federal rulemaking" },
   { id: "CONGRESS", label: "Congress" },
@@ -78,6 +87,17 @@ function PriorityChip({ item, onClick }: { item: ItemDTO; onClick?: () => void }
       {inner}<span className="car">▾</span>
     </button>
   );
+}
+
+/** `needed` marks a missing position on an item whose comment window is open. */
+function PositionPill({ item, onClick }: { item: ItemDTO; onClick?: () => void }) {
+  const p = POS[item.position] ?? POS.PENDING;
+  const pending = item.position === "PENDING";
+  const needed = pending && item.isCommentPeriod && item.days !== null && item.days <= 30;
+  const cls = `posn${pending ? " pending" : ""}${needed ? " needed" : ""}`;
+  const inner = <><span className="sig" aria-hidden="true">{p.sig}</span>{needed ? "Position needed" : p.nm}</>;
+  if (!onClick) return <span className={cls}>{inner}</span>;
+  return <button className={cls} onClick={(e) => { e.stopPropagation(); onClick(); }}>{inner}</button>;
 }
 
 const fmtDate = (iso: string) =>
@@ -312,7 +332,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                         </td>
                         <td className="pos">
                           {it.ownerName ?? <span style={{ color: "var(--critical)", fontWeight: 600 }}>Owner needed</span>}
-                          <br /><span style={{ color: "var(--muted)", fontSize: 11.5 }}>{it.position ?? "Position pending"}</span>
+                          <div style={{ marginTop: 5 }}><PositionPill item={it} /></div>
                         </td>
                       </tr>
                     );
@@ -434,6 +454,7 @@ function UrgentBand({ list, DIV, onJump, nextOpen }: {
               <span className="h">{it.agency} — {it.title}</span>
               <span className="m">
                 <PriorityChip item={it} />
+                <PositionPill item={it} />
                 <span>{it.nextLabel}</span>
                 <span className="d">{it.docket}</span>
                 <span>{it.ownerName ?? "Owner needed"}</span>
@@ -538,8 +559,10 @@ function StatBand({ scoped, items, division, divisions }: {
   const u = scoped.filter((i) => i.isCommentPeriod && i.days !== null && i.days <= URGENT_DAYS).length;
   const open = scoped.filter((i) => i.stage === "Comment open");
   const soon = open.map((i) => i.days).filter((d): d is number => d !== null);
-  const urg = scoped.filter((i) => i.priority === "URGENT");
   const unowned = scoped.filter((i) => !i.ownerId).length;
+  const needPosition = scoped.filter(
+    (i) => i.position === "PENDING" && i.isCommentPeriod && i.days !== null && i.days <= 30
+  ).length;
   return (
     <section className="band" aria-label="Summary">
       <div className="stat"><div className="k">Tracked items</div><div className="v">{scoped.length}</div>
@@ -552,8 +575,8 @@ function StatBand({ scoped, items, division, divisions }: {
         <div className="n">{soon.length ? `earliest closes in ${Math.min(...soon)} day${Math.min(...soon) === 1 ? "" : "s"}` : "no window open"}</div></div>
       <div className="stat"><div className="k">Owner needed</div><div className="v">{unowned}</div>
         <div className="n">{unowned ? "unassigned since import" : "every item is owned"}</div></div>
-      <div className="stat"><div className="k">Marked URGENT</div><div className="v">{urg.length}</div>
-        <div className="n">{division === "all" ? `${new Set(urg.map((i) => i.divisionId)).size} divisions` : "in this division"}</div></div>
+      <div className="stat flag"><div className="k">Need a position</div><div className="v">{needPosition}</div>
+        <div className="n">{due.length ? `of ${due.length} closing in 30 days` : "no window closing soon"}</div></div>
     </section>
   );
 }
@@ -771,6 +794,31 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
               The owner list follows the department. Change the department and the owner clears,
               because the old owner is not on the new list.
             </p>
+
+            <div className="grid2" style={{ marginTop: 14 }}>
+              <div className="field">
+                <label htmlFor="fPos">Position</label>
+                <select id="fPos" value={item.position} disabled={busy}
+                        onChange={(e) => onPatch({ position: e.target.value })}>
+                  {POSITIONS.map((p) => <option key={p.id} value={p.id}>{p.nm}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="fPosNote">Why</label>
+                <input id="fPosNote" defaultValue={item.positionNote ?? ""} disabled={busy}
+                       placeholder="One line the next person can act on"
+                       onBlur={(e) => {
+                         const v = e.target.value.trim();
+                         if (v !== (item.positionNote ?? "")) onPatch({ positionNote: v || null });
+                       }} />
+              </div>
+            </div>
+            {item.positionSetBy && item.positionSetAt && (
+              <div className="posnote">
+                {item.positionNote || "No reason recorded."}
+                <span className="by">{item.positionSetBy} · {fmtDate(item.positionSetAt)}</span>
+              </div>
+            )}
           </div>
 
           <div className="dsec">
@@ -800,7 +848,6 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
               <dt>Source</dt><dd>{item.agency}{item.unit ? ` — ${item.unit}` : ""}</dd>
               <dt>Next date</dt><dd>{u && <Shape s={u} size={9} />} {item.nextLabel ?? "—"}</dd>
               <dt>Topics</dt><dd>{item.topics.join(", ")}</dd>
-              <dt>Position</dt><dd>{item.position ?? "Position pending"}</dd>
               <dt>Standards</dt><dd>{item.standards.length ? item.standards.join(", ") : "—"}</dd>
               <dt>Official text</dt>
               <dd>{item.sourceUrl
@@ -854,7 +901,7 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
   const [form, setForm] = useState({
     docket: "", title: "", agency: "", unit: "", stage: "Comment open",
     commentDueAt: "", divisionId: divisions[0]?.id ?? "up", ownerId: "",
-    priority: "MEDIUM", topics: "", sourceUrl: "",
+    priority: "MEDIUM", position: "PENDING", topics: "", sourceUrl: "",
   });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const roster = people.filter((p) => p.divisionId === form.divisionId);
@@ -918,7 +965,7 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
           stage: form.stage,
           commentDueAt: form.commentDueAt ? new Date(form.commentDueAt).toISOString() : null,
           divisionId: form.divisionId, ownerId: form.ownerId || null,
-          priority: form.priority,
+          priority: form.priority, position: form.position,
           topics: form.topics.split(",").map((t) => t.trim()).filter(Boolean),
           sourceUrl: form.sourceUrl || undefined,
         }),
@@ -1017,6 +1064,12 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
                   <option value="">— pick an owner —</option>
                   {roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select></div>
+            </div>
+            <div className="field" style={{ marginTop: 11 }}>
+              <label htmlFor="nPos">Position</label>
+              <select id="nPos" value={form.position} onChange={(e) => set("position", e.target.value)}>
+                {POSITIONS.map((p) => <option key={p.id} value={p.id}>{p.nm}</option>)}
+              </select>
             </div>
           </div>
 

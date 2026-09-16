@@ -18,6 +18,16 @@ enum Priority {
   NOT_RELEVANT
 }
 
+/// What the association will do about a record. PENDING is the actionable
+/// state: an open comment window with no position is work nobody has claimed.
+enum Position {
+  PENDING
+  SUPPORT
+  OPPOSE
+  AMEND      // support with modifications
+  MONITOR
+}
+
 enum Track {
   FEDERAL   // rulemaking
   CONGRESS
@@ -121,7 +131,10 @@ model Item {
   // false while an agent's guess is still waiting for a human to confirm it
   priorityConfirmed Boolean @default(false)
 
-  position   String?                       // Support, Oppose, Support with modifications
+  position      Position @default(PENDING)
+  positionNote  String?                    // why — a position without a reason is an opinion
+  positionSetBy String?
+  positionSetAt DateTime?
   topics     String[]  @default([])
   standards  String[]  @default([])        // linked API standards, e.g. RP 1173
   draftState String?                       // "Draft with counsel", "No draft started"

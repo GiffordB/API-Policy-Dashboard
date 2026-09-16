@@ -38,9 +38,14 @@ the Federal Register for it now, or watch for it from now on.
   change, a new or extended comment deadline, an effective date.
 - **48-hour band.** Comment periods closing inside two days, at the top of the
   page. Membership is decided by time alone. Priority decides the order inside it.
-- **Editing.** Priority, department and owner, all with an audit trail. The
-  owner list follows the department, so moving an item clears an owner who is
-  not on the new roster.
+- **Editing.** Priority, department, owner and position, all with an audit
+  trail. The owner list follows the department, so moving an item clears an
+  owner who is not on the new roster.
+- **Position.** Support, Oppose, Amend or Monitor, with a one-line reason and
+  the name of whoever set it. A position is deliberately not colour-coded — red,
+  amber and green mean the clock, and the priority ramp means rank. The only
+  position that raises its voice is the missing one: an open comment window with
+  no position shows as **Position needed**, and the dashboard counts them.
 - **Add a reg the collectors missed.** Paste a Federal Register number or a URL
   and it fills the record, or search by words in the title.
 

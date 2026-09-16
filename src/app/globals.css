@@ -182,6 +182,39 @@ button.prio .car{color:var(--muted); font-size:9px; margin-left:1px}
 .primenu button[aria-checked="true"]{background:var(--accent-soft)}
 .primenu .sep{height:1px; background:var(--rule); margin:4px 2px}
 
+/* ---------- position ---------- */
+/* Deliberately not colour-coded. Red, amber and green mean the clock, and the
+   priority ramp means rank. A position is a decision, so it reads as a word
+   with a sigil — and the only one that raises its voice is the missing one. */
+.posn{
+  display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  font-size:11.5px; font-weight:600; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--rule);
+  padding:3px 8px; border-radius:4px;
+}
+.posn .sig{
+  display:inline-block; width:11px; text-align:center;
+  font-size:13px; font-weight:700; line-height:1; color:var(--ink-2);
+}
+.posn.pending{
+  background:transparent; border-style:dashed; border-color:var(--rule-2);
+  color:var(--muted); font-weight:500;
+}
+.posn.pending .sig{color:var(--muted)}
+/* Pending with an open comment window is the real work queue. */
+.posn.needed{
+  border-style:solid; border-color:color-mix(in srgb, var(--critical) 45%, transparent);
+  color:var(--critical); font-weight:700; background:transparent;
+}
+.posn.needed .sig{color:var(--critical)}
+button.posn{appearance:none; font:inherit; cursor:pointer}
+button.posn:hover{border-color:var(--rule-2)}
+.posnote{
+  font-size:11.5px; color:var(--ink-2); line-height:1.5;
+  border-left:2px solid var(--rule-2); padding-left:9px; margin-top:7px;
+}
+.posnote .by{display:block; color:var(--muted); font-size:10.5px; margin-top:3px}
+
 /* ---------- ghosted rows ---------- */
 table.items tbody tr.ghost td{opacity:.45}
 table.items tbody tr.ghost:hover td{opacity:.72}

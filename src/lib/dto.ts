@@ -6,7 +6,9 @@ export type ItemDTO = {
   nextLabel: string | null; days: number | null; isCommentPeriod: boolean;
   divisionId: string; ownerId: string | null; ownerName: string | null;
   priority: string; priorityConfirmed: boolean;
-  position: string | null; topics: string[]; standards: string[]; draftState: string | null;
+  position: string; positionNote: string | null;
+  positionSetBy: string | null; positionSetAt: string | null;
+  topics: string[]; standards: string[]; draftState: string | null;
   sourceUrl: string | null; frCitation: string | null; abstract: string | null;
   lastFinding: { summary: string; source: string; foundAt: string } | null;
 };
@@ -52,7 +54,10 @@ export async function loadDashboard() {
       nextLabel: i.nextLabel, days: daysUntil(i.commentDueAt), isCommentPeriod: i.isCommentPeriod,
       divisionId: i.divisionId, ownerId: i.ownerId, ownerName: i.owner?.name ?? null,
       priority: i.priority, priorityConfirmed: i.priorityConfirmed,
-      position: i.position, topics: i.topics, standards: i.standards, draftState: i.draftState,
+      position: i.position, positionNote: i.positionNote,
+      positionSetBy: i.positionSetBy,
+      positionSetAt: i.positionSetAt?.toISOString() ?? null,
+      topics: i.topics, standards: i.standards, draftState: i.draftState,
       sourceUrl: i.sourceUrl, frCitation: i.frCitation, abstract: i.abstract,
       lastFinding: i.findings[0]
         ? { summary: i.findings[0].summary, source: i.findings[0].source, foundAt: i.findings[0].foundAt.toISOString() }

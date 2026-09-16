@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { Priority, SourceKind, Track } from "@prisma/client";
+import { Position, Priority, SourceKind, Track } from "@prisma/client";
 
 const Body = z.object({
   actor: z.string().min(1),
@@ -15,6 +15,7 @@ const Body = z.object({
   divisionId: z.string(),
   ownerId: z.string().nullable().optional(),
   priority: z.nativeEnum(Priority).default(Priority.MEDIUM),
+  position: z.nativeEnum(Position).default(Position.PENDING),
   topics: z.array(z.string()).default([]),
   sourceUrl: z.string().url().optional(),
 });
@@ -49,7 +50,9 @@ export async function POST(req: NextRequest) {
       divisionId: b.divisionId, ownerId: b.ownerId ?? null,
       priority: b.priority, priorityConfirmed: true,
       topics: b.topics.length ? b.topics : ["Untagged"],
-      position: "Position pending",
+      position: b.position,
+      positionSetBy: b.position === Position.PENDING ? null : b.actor,
+      positionSetAt: b.position === Position.PENDING ? null : new Date(),
       source: b.sourceUrl ? SourceKind.FEDERAL_REGISTER : SourceKind.MANUAL,
       sourceUrl: b.sourceUrl ?? null,
     },
