@@ -61,8 +61,8 @@ the Federal Register for it now, or watch for it from now on.
 | Source | State |
 |---|---|
 | Federal Register | live |
-| Regulations.gov (dockets, filed comments) | needs `DATA_GOV_API_KEY` |
-| Congress.gov (bills) | needs `DATA_GOV_API_KEY` |
+| Congress.gov (bills) | live |
+| Regulations.gov (dockets, filed comments) | not written; the key is in place |
 | Open States (state bills) | needs `OPENSTATES_API_KEY` |
 | CourtListener (dockets) | needs `COURTLISTENER_TOKEN` |
 | OIRA / EO 12866 pipeline | not written |

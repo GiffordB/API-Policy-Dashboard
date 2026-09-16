@@ -45,11 +45,21 @@ const started = Date.now();
 console.log(`app: ${base}`);
 
 const c = await call(`/api/collect?days=${days}`, "collect");
-console.log(
-  `Federal Register (${days}d): checked ${c.checked}, created ${c.created}, ` +
-  `changed ${c.changed}, unchanged ${c.skipped ?? 0}` +
-  (c.archived ? `, archived ${c.archived}` : "")
-);
+
+/** One line per source. A source that failed says so and does not hide the others. */
+function report(label, r) {
+  if (!r) return;
+  if (r.error) { console.log(`${label}: FAILED — ${r.error}`); failures++; return; }
+  console.log(
+    `${label} (${days}d): checked ${r.checked}, created ${r.created}, ` +
+    `changed ${r.changed}, unchanged ${r.skipped ?? 0}` +
+    (r.archived ? `, archived ${r.archived}` : "") +
+    (r.note ? ` — ${r.note}` : "")
+  );
+}
+let failures = 0;
+report("Federal Register", c.federalRegister ?? c);
+report("Congress", c.congress);
 
 if (classify) {
   const k = await call(`/api/admin/classify?limit=${classifyCap}`, "classify");
@@ -59,3 +69,5 @@ if (classify) {
 }
 
 console.log(`done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+// A source that failed should turn the run red, so it shows in Render.
+if (failures) process.exit(1);

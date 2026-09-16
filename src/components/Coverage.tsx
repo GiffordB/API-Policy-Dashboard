@@ -7,7 +7,7 @@ import type { CoverageData, WatchDTO } from "@/lib/coverage";
 
 const KINDS = {
   AGENCY:  { title: "Agencies swept",        blurb: "Every rule, proposal and notice these agencies publish is read on each run." },
-  TERM:    { title: "Terms we always search", blurb: "Searched across the whole Federal Register, including agencies not on the list above. This is how something outside the usual sources still reaches you." },
+  TERM:    { title: "Terms we always search", blurb: "Searched across every connected source — the whole Federal Register, including agencies not on the list above, and every bill that moved in Congress. This is how something outside the usual sources still reaches you." },
   DOCKET:  { title: "Dockets we follow",      blurb: "Pinned by docket number and followed whatever the documents are titled." },
   EXCLUDE: { title: "Dropped on purpose",     blurb: "Two thirds of the Federal Register is routine paperwork. These patterns drop it before it reaches the dashboard. Switch one off if you think we are missing something." },
 } as const;
@@ -157,11 +157,10 @@ export default function Coverage({ data }: { data: CoverageData }) {
         })}
 
         <section className="panel" style={{ marginTop: 18 }} aria-label="Not connected yet">
-          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">4 sources</span></div>
+          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">3 sources</span></div>
           <div className="agents">
             {[
-              ["Regulations.gov", "Comments actually filed on a docket, including who filed against you.", "needs the api.data.gov key wired in"],
-              ["Congress.gov", "Bills, actions, cosponsors and committee markups.", "needs the api.data.gov key wired in"],
+              ["Regulations.gov", "Comments actually filed on a docket, including who filed against you.", "not written yet — the key is already in place"],
               ["Open States", "Bills in all 50 state legislatures.", "needs a free Open States key"],
               ["CourtListener", "Federal dockets and opinions.", "needs a free CourtListener token"],
             ].map(([nm, what, why]) => (

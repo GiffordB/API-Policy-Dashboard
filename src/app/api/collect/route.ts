@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { collectFederalRegister } from "@/lib/collect";
+import { collectCongress } from "@/lib/collect-congress";
 
 export const maxDuration = 300;
 
@@ -13,9 +14,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const days = Number(req.nextUrl.searchParams.get("days") ?? 30);
+  const d = Number.isFinite(days) ? days : 30;
+  const source = (req.nextUrl.searchParams.get("source") ?? "all").toLowerCase();
   try {
-    const r = await collectFederalRegister(Number.isFinite(days) ? days : 30);
-    return NextResponse.json(r);
+    if (source === "federal") return NextResponse.json({ federalRegister: await collectFederalRegister(d) });
+    if (source === "congress") return NextResponse.json({ congress: await collectCongress(d) });
+
+    // Both, and one failing source must not hide the other's result.
+    const [fr, cg] = await Promise.allSettled([collectFederalRegister(d), collectCongress(d)]);
+    return NextResponse.json({
+      federalRegister: fr.status === "fulfilled" ? fr.value : { error: String(fr.reason?.message ?? fr.reason) },
+      congress: cg.status === "fulfilled" ? cg.value : { error: String(cg.reason?.message ?? cg.reason) },
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 500 });
   }
