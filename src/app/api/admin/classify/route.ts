@@ -10,8 +10,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? 60);
+  const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
   try {
-    return NextResponse.json(await classifyUnassigned(Number.isFinite(limit) ? limit : 60));
+    return NextResponse.json(await classifyUnassigned(Number.isFinite(limit) ? limit : 60, 12, dryRun));
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 500 });
   }

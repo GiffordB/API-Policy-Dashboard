@@ -54,12 +54,17 @@ const Result = z.object({
   ),
 });
 
-type Candidate = { id: string; docket: string; title: string; agency: string; topics: string[] };
+type Candidate = {
+  id: string; docket: string; title: string; agency: string;
+  topics: string[]; abstract: string | null;
+};
 
 async function classifyBatch(client: Anthropic, batch: Candidate[]) {
   const lines = batch
-    .map((c, i) => `${i + 1}. docket: ${c.docket}\n   agency: ${c.agency}\n   title: ${c.title}`)
-    .join("\n");
+    .map((c, i) =>
+      `${i + 1}. docket: ${c.docket}\n   agency: ${c.agency}\n   title: ${c.title}` +
+      (c.abstract ? `\n   summary: ${c.abstract.slice(0, 700)}` : ""))
+    .join("\n\n");
 
   const response = await client.messages.parse({
     model: "claude-opus-5",
@@ -67,18 +72,24 @@ async function classifyBatch(client: Anthropic, batch: Candidate[]) {
     output_config: { effort: "low", format: zodOutputFormat(Result) },
     system:
       "You file United States federal regulatory documents into the policy divisions of an " +
-      "energy trade association. You are filing work, not summarising it. When a document " +
-      "does not clearly belong to one division, answer none — an honest blank is better than " +
-      "a wrong file, because a wrong file looks handled and nobody checks it again.",
+      "oil and natural gas trade association. You are filing work, not summarising it.\n\n" +
+      "These documents were already filtered to agencies the association follows, so most of " +
+      "them do belong to one of the five divisions. File them. Reserve none for a document " +
+      "that genuinely concerns another industry — electric reliability, drinking water, " +
+      "pesticides, food, aviation — or that is pure agency housekeeping.\n\n" +
+      "Judge by subject matter, not by which agency published it. EPA publishes for every " +
+      "division. A state air quality plan that governs production sites is upstream; one that " +
+      "governs refineries is downstream. When two divisions could argue for it, pick the one " +
+      "whose members the rule binds, and say so in your reason.",
     messages: [
       {
         role: "user",
         content:
           `The divisions:\n\n${DIVISION_BRIEF}\n\n` +
           `File each document below. Return one result per document, with the docket copied ` +
-          `exactly.\n\nUse low confidence when the title is too thin to judge, and none when no ` +
-          `division fits. A document about electricity reliability, drinking water, pesticides ` +
-          `or another industry belongs to none.\n\n${lines}`,
+          `exactly.\n\nConfidence means how sure you are of the division, not how important the ` +
+          `document is. A routine rule you can place from its title is high confidence. Use low ` +
+          `only when you genuinely cannot tell which of two or more divisions owns it.\n\n${lines}`,
       },
     ],
   });
@@ -87,7 +98,11 @@ async function classifyBatch(client: Anthropic, batch: Candidate[]) {
   return response.parsed_output?.results ?? [];
 }
 
-export async function classifyUnassigned(limit = 200, batchSize = 12) {
+export type Decision = {
+  docket: string; title: string; division: string; confidence: string; reason: string; applied: boolean;
+};
+
+export async function classifyUnassigned(limit = 200, batchSize = 12, dryRun = false) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
   const client = new Anthropic();
 
@@ -95,11 +110,12 @@ export async function classifyUnassigned(limit = 200, batchSize = 12) {
     where: { divisionId: "none" },
     orderBy: [{ commentDueAt: "asc" }, { createdAt: "desc" }],
     take: limit,
-    select: { id: true, docket: true, title: true, agency: true, topics: true },
+    select: { id: true, docket: true, title: true, agency: true, topics: true, abstract: true },
   });
 
-  const run = await prisma.agentRun.create({ data: { source: SourceKind.MANUAL } });
+  const run = dryRun ? null : await prisma.agentRun.create({ data: { source: SourceKind.MANUAL } });
   let filed = 0, leftAlone = 0, checked = 0;
+  const decisions: Decision[] = [];
 
   try {
     for (let i = 0; i < candidates.length; i += batchSize) {
@@ -111,10 +127,12 @@ export async function classifyUnassigned(limit = 200, batchSize = 12) {
         const item = batch.find((c) => c.docket === r.docket);
         if (!item) continue;
 
-        if (r.division === "none" || r.confidence === "low") {
-          leftAlone++;
-          continue;
-        }
+        const skip = r.division === "none" || r.confidence === "low";
+        decisions.push({
+          docket: r.docket, title: item.title.slice(0, 110),
+          division: r.division, confidence: r.confidence, reason: r.reason, applied: !skip && !dryRun,
+        });
+        if (skip || dryRun) { leftAlone++; continue; }
         // Re-read: a person may have filed this item while the batch was in flight.
         const fresh = await prisma.item.findUnique({ where: { id: item.id }, select: { divisionId: true } });
         if (!fresh || fresh.divisionId !== "none") { leftAlone++; continue; }
@@ -133,14 +151,14 @@ export async function classifyUnassigned(limit = 200, batchSize = 12) {
         filed++;
       }
     }
-    await prisma.agentRun.update({
+    if (run) await prisma.agentRun.update({
       where: { id: run.id },
       data: { finishedAt: new Date(), ok: true, checked, changed: filed, created: 0 },
     });
-    return { checked, filed, leftAlone };
+    return { dryRun, checked, filed, leftAlone, decisions };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.agentRun.update({
+    if (run) await prisma.agentRun.update({
       where: { id: run.id },
       data: { finishedAt: new Date(), ok: false, checked, changed: filed, error: message },
     });

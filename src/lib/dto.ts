@@ -7,7 +7,7 @@ export type ItemDTO = {
   divisionId: string; ownerId: string | null; ownerName: string | null;
   priority: string; priorityConfirmed: boolean;
   position: string | null; topics: string[]; standards: string[]; draftState: string | null;
-  sourceUrl: string | null; frCitation: string | null;
+  sourceUrl: string | null; frCitation: string | null; abstract: string | null;
   lastFinding: { summary: string; source: string; foundAt: string } | null;
 };
 export type PersonDTO = { id: string; name: string; divisionId: string };
@@ -53,7 +53,7 @@ export async function loadDashboard() {
       divisionId: i.divisionId, ownerId: i.ownerId, ownerName: i.owner?.name ?? null,
       priority: i.priority, priorityConfirmed: i.priorityConfirmed,
       position: i.position, topics: i.topics, standards: i.standards, draftState: i.draftState,
-      sourceUrl: i.sourceUrl, frCitation: i.frCitation,
+      sourceUrl: i.sourceUrl, frCitation: i.frCitation, abstract: i.abstract,
       lastFinding: i.findings[0]
         ? { summary: i.findings[0].summary, source: i.findings[0].source, foundAt: i.findings[0].foundAt.toISOString() }
         : null,

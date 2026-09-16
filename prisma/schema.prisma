@@ -91,6 +91,7 @@ model Item {
   standards  String[]  @default([])        // linked API standards, e.g. RP 1173
   draftState String?                       // "Draft with counsel", "No draft started"
 
+  abstract      String?                       // the agency's own summary
   publishedOn   DateTime?                     // as printed in the Federal Register
   source        SourceKind @default(MANUAL)
   sourceUrl     String?

@@ -83,6 +83,7 @@ export async function collectFederalRegister(sinceDays = 30) {
             priority: guessPriority(commentDueAt, stage) as Priority,
             priorityConfirmed: false,
             topics: inferTopics(doc.title, doc.abstract),
+            abstract: doc.abstract,
             publishedOn: new Date(doc.publication_date),
             source: SourceKind.FEDERAL_REGISTER,
             sourceUrl: doc.html_url,
@@ -123,6 +124,7 @@ export async function collectFederalRegister(sinceDays = 30) {
         where: { id: existing.id },
         data: {
           title: doc.title,
+          abstract: doc.abstract,
           stage, stageIndex,
           commentDueAt,
           isCommentPeriod: isOpen,
