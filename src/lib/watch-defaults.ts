@@ -100,5 +100,20 @@ export function defaultWatches() {
     divisionId: dv as string,
   }));
 
-  return [...agencies, ...terms, ...excludes];
+  // The state legislatures an energy trade association actually reads. Open
+  // States searches all fifty in one request; this decides which are kept.
+  const jurisdictions = [
+    ["Texas", "up"], ["New Mexico", "up"], ["Oklahoma", "up"], ["North Dakota", "up"],
+    ["Wyoming", "up"], ["Alaska", "up"], ["Louisiana", "gas"], ["Pennsylvania", "up"],
+    ["Ohio", "mid"], ["West Virginia", "mid"], ["Colorado", "up"], ["California", "down"],
+  ].map(([name, dv]) => ({
+    kind: WatchKind.JURISDICTION,
+    value: name as string,
+    label: name as string,
+    note: null as string | null,
+    source: SourceKind.OPEN_STATES,
+    divisionId: dv as string,
+  }));
+
+  return [...agencies, ...terms, ...jurisdictions, ...excludes];
 }

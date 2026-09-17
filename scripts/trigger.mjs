@@ -18,6 +18,12 @@ const secret = process.env.COLLECT_SECRET ?? "";
 const days = process.env.COLLECT_DAYS ?? "3";
 const classifyCap = process.env.CLASSIFY_CAP ?? "25";
 const classify = process.env.CLASSIFY_AFTER_COLLECT === "1";
+/**
+ * Open States allows a few hundred requests a day, not a few thousand an hour,
+ * so state bills are swept once daily rather than on every run. UTC.
+ */
+const statesHour = Number(process.env.STATES_HOUR ?? 11);
+const statesDays = process.env.STATES_DAYS ?? "7";
 
 if (!base) fail("APP_URL is not set. Set it to the dashboard's address, e.g. https://your-app.vercel.app");
 if (!secret) fail("COLLECT_SECRET is not set. Use the same value as the Vercel project.");
@@ -61,6 +67,13 @@ let failures = 0;
 report("Federal Register", c.federalRegister ?? c);
 report("Congress", c.congress);
 report("Regulations.gov", c.regulations);
+
+if (new Date().getUTCHours() === statesHour) {
+  const st = await call(`/api/collect?source=states&days=${statesDays}`, "states");
+  report("Open States", st.states);
+} else {
+  console.log(`Open States: skipped — runs once a day at ${String(statesHour).padStart(2, "0")}:00 UTC`);
+}
 
 if (classify) {
   const k = await call(`/api/admin/classify?limit=${classifyCap}`, "classify");

@@ -78,7 +78,8 @@ enum WatchKind {
   AGENCY    // sweep everything this agency publishes
   TERM      // search these words on every run
   DOCKET    // pin one docket and follow it whatever it is called
-  EXCLUDE   // drop anything whose title matches this pattern
+  EXCLUDE      // drop anything whose title matches this pattern
+  JURISDICTION // a state legislature worth reading
 }
 
 model Watch {

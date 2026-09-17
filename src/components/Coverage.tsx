@@ -9,6 +9,7 @@ const KINDS = {
   AGENCY:  { title: "Agencies swept",        blurb: "Every rule, proposal and notice these agencies publish is read on each run." },
   TERM:    { title: "Terms we always search", blurb: "Searched across every connected source — the whole Federal Register, including agencies not on the list above, and every bill that moved in Congress. This is how something outside the usual sources still reaches you." },
   DOCKET:  { title: "Dockets we follow",      blurb: "Pinned by docket number and followed whatever the documents are titled." },
+  JURISDICTION: { title: "State legislatures we read", blurb: "Open States searches all fifty states in one request, and these decide which results are kept. Remove them all and every state is kept — a wide net you can see beats a silent filter." },
   EXCLUDE: { title: "Dropped on purpose",     blurb: "Two thirds of the Federal Register is routine paperwork. These patterns drop it before it reaches the dashboard. Switch one off if you think we are missing something." },
 } as const;
 
@@ -70,13 +71,16 @@ export default function Coverage({ data }: { data: CoverageData }) {
           </p>
         </section>
 
-        <section className="band" aria-label="Coverage summary">
+        <section className="band six" aria-label="Coverage summary">
           <div className="stat"><div className="k">Agencies swept</div>
             <div className="v">{by("AGENCY").filter((w) => w.active).length}</div>
             <div className="n">every document they publish</div></div>
           <div className="stat"><div className="k">Terms searched</div>
             <div className="v">{by("TERM").filter((w) => w.active).length}</div>
             <div className="n">across the whole register</div></div>
+          <div className="stat"><div className="k">States read</div>
+            <div className="v">{by("JURISDICTION").filter((w) => w.active).length}</div>
+            <div className="n">of fifty</div></div>
           <div className="stat"><div className="k">Dockets pinned</div>
             <div className="v">{by("DOCKET").filter((w) => w.active).length}</div>
             <div className="n">followed by number</div></div>
@@ -88,7 +92,7 @@ export default function Coverage({ data }: { data: CoverageData }) {
             <div className="n">{untraced > 0 ? `${untraced} pre-date the watchlist` : "all traced to a watch"}</div></div>
         </section>
 
-        {(["AGENCY", "TERM", "DOCKET", "EXCLUDE"] as const).map((kind) => {
+        {(["AGENCY", "TERM", "JURISDICTION", "DOCKET", "EXCLUDE"] as const).map((kind) => {
           const rows = by(kind);
           const meta = KINDS[kind];
           return (
@@ -157,10 +161,9 @@ export default function Coverage({ data }: { data: CoverageData }) {
         })}
 
         <section className="panel" style={{ marginTop: 18 }} aria-label="Not connected yet">
-          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">2 sources</span></div>
+          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">1 source</span></div>
           <div className="agents">
             {[
-              ["Open States", "Bills in all 50 state legislatures.", "needs a free Open States key"],
               ["CourtListener", "Federal dockets and opinions.", "needs a free CourtListener token"],
             ].map(([nm, what, why]) => (
               <div className="ag" key={nm}>

@@ -79,7 +79,7 @@ the Federal Register for it now, or watch for it from now on.
 | Federal Register | live |
 | Congress.gov (bills) | live |
 | Regulations.gov (filed comments) | live |
-| Open States (state bills) | needs `OPENSTATES_API_KEY` |
+| Open States (state bills) | needs `OPENSTATES_API_KEY` — daily, at `STATES_HOUR` UTC |
 | CourtListener (dockets) | needs `COURTLISTENER_TOKEN` |
 | OIRA / EO 12866 pipeline | not written |
 | Division analyst agents | not written |

@@ -322,6 +322,10 @@ table.items tbody tr.ghost:hover td{opacity:.72}
   .stat:first-child{border-top:0}
 }
 
+.band.six{grid-template-columns:repeat(6,1fr)}
+@media (max-width:1100px){.band.six{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:640px){.band.six{grid-template-columns:repeat(2,1fr)}}
+
 /* ---------- layout ---------- */
 .main{display:grid; grid-template-columns:minmax(0,1fr) 336px; gap:18px; margin-top:18px}
 @media (max-width:1040px){.main{grid-template-columns:minmax(0,1fr)}}
