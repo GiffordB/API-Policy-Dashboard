@@ -259,7 +259,9 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
         {!searching && (
           <>
             <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
-            <DeadlinePanel list={deadlines} DIV={DIV} />
+            {/* The filters sit above the deadline chart on purpose: the chart
+                obeys them, so choosing a department or an owner has to come
+                first or the chart appears to ignore you. */}
             <FilterBar
               divisions={divisions} people={people} items={items} track={track}
               actor={actor}
@@ -267,6 +269,7 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
               onDivision={(id) => { setDivision(id); setTopic("All"); }}
               onOwner={changeOwner} onPrio={changePrio}
             />
+            <DeadlinePanel list={deadlines} DIV={DIV} />
             <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
           </>
         )}
