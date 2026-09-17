@@ -8,10 +8,15 @@ import { Track } from "@prisma/client";
 export const TRACKS = [
   { slug: "regulatory", track: Track.FEDERAL,  label: "Regulatory",  blurb: "Federal agency rulemaking" },
   { slug: "congress",   track: Track.CONGRESS, label: "Congress",    blurb: "Bills and resolutions" },
-  { slug: "states",     track: Track.STATE,    label: "States",      blurb: "State legislatures" },
-  // No Litigation page. There is no court feed, and a page nothing can fill is
-  // a promise the tool does not keep. Track.COURT stays in the schema so the
-  // handful of records that use it are never orphaned.
+  // No States or Litigation page.
+  //
+  // State legislatures are parked pending a decision on the data source, and
+  // there is no court feed at all. A page nothing fills is a promise the tool
+  // does not keep.
+  //
+  // Both enum values stay in the schema, and the records already gathered stay
+  // in the database. Putting a line back here restores its page and its records
+  // together — that is the whole undo.
 ] as const;
 
 export type TrackSlug = (typeof TRACKS)[number]["slug"];

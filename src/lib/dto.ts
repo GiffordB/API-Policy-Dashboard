@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { TRACKS } from "@/lib/tracks";
 
 export type ItemDTO = {
   id: string; docket: string; title: string; agency: string; unit: string | null;
@@ -37,7 +38,9 @@ export async function loadDashboard() {
     prisma.division.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.person.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.item.findMany({
-      where: { archivedAt: null },
+      // Only tracks that have a page. A record with nowhere to be shown is
+      // hidden rather than half-present — findable by search but unopenable.
+      where: { archivedAt: null, track: { in: TRACKS.map((t) => t.track) } },
       include: {
         owner: true,
         findings: { orderBy: { foundAt: "desc" }, take: 1 },

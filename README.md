@@ -17,7 +17,6 @@ bookmarked and sent to a colleague:
 |---|---|
 | `/regulatory` | Federal agency rulemaking |
 | `/congress` | Bills and resolutions |
-| `/states` | State legislatures |
 | `/coverage` | What the collectors look for |
 
 `/` redirects to `/regulatory`. Opening an item that lives on another track
@@ -78,7 +77,7 @@ the Federal Register for it now, or watch for it from now on.
 | Federal Register | live |
 | Congress.gov (bills) | live |
 | Regulations.gov (filed comments) | live |
-| Open States (state bills) | **paused** — `STATES_ENABLED=1` resumes the daily sweep |
+| Open States (state bills) | **parked** — the collector is intact; see `src/lib/tracks.ts` |
 | OIRA / EO 12866 pipeline | not written |
 | Division analyst agents | not written |
 

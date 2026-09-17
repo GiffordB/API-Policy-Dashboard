@@ -75,13 +75,9 @@ report("Federal Register", c.federalRegister ?? c);
 report("Congress", c.congress);
 report("Regulations.gov", c.regulations);
 
-if (!statesEnabled) {
-  console.log("Open States: disabled — set STATES_ENABLED=1 to resume the daily sweep");
-} else if (new Date().getUTCHours() === statesHour) {
+if (statesEnabled && new Date().getUTCHours() === statesHour) {
   const st = await call(`/api/collect?source=states&days=${statesDays}`, "states");
   report("Open States", st.states);
-} else {
-  console.log(`Open States: idle — runs once a day at ${String(statesHour).padStart(2, "0")}:00 UTC`);
 }
 
 if (classify) {
