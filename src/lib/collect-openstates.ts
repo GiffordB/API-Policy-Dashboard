@@ -25,9 +25,17 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * State bills matching the watchlist's terms.
  *
  * Open States searches every state at once, so a term costs one request rather
- * than fifty. The JURISDICTION entries on the coverage page then decide which
- * states are kept. With none listed, every state is kept — a wide net you can
- * see beats a silent filter.
+ * than fifty. Every state is kept.
+ *
+ * An earlier version discarded states outside the watchlist, which was worse
+ * than it looks: each term is capped at twenty results taken newest-first
+ * nationally, so the cap was being spent on records that were then thrown
+ * away, and a Texas bill could be crowded out by twenty from states nobody
+ * tracks. The cap now buys twenty records that are all kept.
+ *
+ * The JURISDICTION list is no longer a filter. It says which states the team
+ * works, and a bill from one of them starts at a higher priority than a bill
+ * from a state nobody watches — both unconfirmed, for a person to settle.
  *
  * The free key allows roughly ten requests a minute, which is the real
  * constraint. So a run does not try to sweep every term: it takes the terms
@@ -42,7 +50,7 @@ export async function collectOpenStates(
 ) {
   const actionSince = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
   const run = await prisma.agentRun.create({ data: { source: SourceKind.OPEN_STATES } });
-  let checked = 0, created = 0, changed = 0, skipped = 0;
+  let checked = 0, created = 0, changed = 0, unchanged = 0;
 
   try {
     const terms = await prisma.watch.findMany({
@@ -60,7 +68,7 @@ export async function collectOpenStates(
         where: { id: run.id },
         data: { finishedAt: new Date(), ok: true, checked: 0, created: 0, changed: 0 },
       });
-      return { ok: true, checked: 0, created: 0, changed: 0, skipped: 0, note: "no terms on the watchlist" };
+      return { ok: true, checked: 0, created: 0, changed: 0, unchanged: 0, note: "no terms on the watchlist" };
     }
 
     const hits = new Map<string, number>();
@@ -84,7 +92,7 @@ export async function collectOpenStates(
       for (const b of bills) {
         checked++;
         const where = b.jurisdiction?.name ?? "";
-        if (wanted.size && !wanted.has(where.toLowerCase())) { skipped++; continue; }
+        const watched = wanted.has(where.toLowerCase());
 
         const docket = billId(b);
         if (seen.has(docket)) continue;
@@ -109,7 +117,9 @@ export async function collectOpenStates(
               track: Track.STATE, stage, stageIndex,
               nextLabel,
               divisionId: division,
-              priority: Priority.MEDIUM, priorityConfirmed: false,
+              // A state the team works starts higher than one it does not.
+              priority: watched ? Priority.MEDIUM : Priority.LOW,
+              priorityConfirmed: false,
               topics: inferTopics(b.title, (b.subject ?? []).join(" ")),
               publishedOn: b.latest_action_date ? new Date(b.latest_action_date) : null,
               source: SourceKind.OPEN_STATES,
@@ -142,7 +152,7 @@ export async function collectOpenStates(
             },
           });
           changed++;
-        } else skipped++;
+        } else unchanged++;
 
         await prisma.item.update({
           where: { id: existing.id },
@@ -176,7 +186,7 @@ export async function collectOpenStates(
       data: { finishedAt: new Date(), ok: true, checked, created, changed },
     });
     return {
-      ok: true, checked, created, changed, skipped,
+      ok: true, checked, created, changed, unchanged,
       termsSwept: swept.length,
       note: limited
         ? `Stopped at the rate limit after ${swept.length} terms. ${waiting} still queued; the next run continues.`

@@ -9,7 +9,7 @@ const KINDS = {
   AGENCY:  { title: "Agencies swept",        blurb: "Every rule, proposal and notice these agencies publish is read on each run." },
   TERM:    { title: "Terms we always search", blurb: "Searched across every connected source — the whole Federal Register, including agencies not on the list above, and every bill that moved in Congress. This is how something outside the usual sources still reaches you." },
   DOCKET:  { title: "Dockets we follow",      blurb: "Pinned by docket number and followed whatever the documents are titled." },
-  JURISDICTION: { title: "State legislatures we read", blurb: "Open States searches all fifty states in one request, and these decide which results are kept. Remove them all and every state is kept — a wide net you can see beats a silent filter." },
+  JURISDICTION: { title: "States we work", blurb: "Every state is collected — Open States searches all fifty in one request, and nothing is thrown away. This list says which states matter most to the team: a bill from one of these starts at a higher priority than a bill from a state nobody watches. Neither is confirmed; a person still decides." },
   EXCLUDE: { title: "Dropped on purpose",     blurb: "Two thirds of the Federal Register is routine paperwork. These patterns drop it before it reaches the dashboard. Switch one off if you think we are missing something." },
 } as const;
 
@@ -78,9 +78,9 @@ export default function Coverage({ data }: { data: CoverageData }) {
           <div className="stat"><div className="k">Terms searched</div>
             <div className="v">{by("TERM").filter((w) => w.active).length}</div>
             <div className="n">across the whole register</div></div>
-          <div className="stat"><div className="k">States read</div>
+          <div className="stat"><div className="k">States prioritised</div>
             <div className="v">{by("JURISDICTION").filter((w) => w.active).length}</div>
-            <div className="n">of fifty</div></div>
+            <div className="n">all fifty are collected</div></div>
           <div className="stat"><div className="k">Dockets pinned</div>
             <div className="v">{by("DOCKET").filter((w) => w.active).length}</div>
             <div className="n">followed by number</div></div>

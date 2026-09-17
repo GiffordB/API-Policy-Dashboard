@@ -58,7 +58,7 @@ function report(label, r) {
   if (r.error) { console.log(`${label}: FAILED — ${r.error}`); failures++; return; }
   console.log(
     `${label} (${days}d): checked ${r.checked}, created ${r.created}, ` +
-    `changed ${r.changed}, unchanged ${r.skipped ?? 0}` +
+    `changed ${r.changed}, unchanged ${r.unchanged ?? r.skipped ?? 0}` +
     (r.archived ? `, archived ${r.archived}` : "") +
     (r.note ? ` — ${r.note}` : "")
   );
