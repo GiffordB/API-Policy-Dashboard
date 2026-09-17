@@ -51,7 +51,7 @@ export default function Coverage({ data }: { data: CoverageData }) {
             <h1>Policy Radar</h1>
             <span className="sub">Coverage</span>
           </div>
-          <Link href="/" className="chip" style={{ textDecoration: "none" }}>← Back to the dashboard</Link>
+          <Link href="/regulatory" className="chip" style={{ textDecoration: "none" }}>← Back to the dashboard</Link>
           <span className="clock">
             {lastRun ? `Last run ${new Date(lastRun.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Never run"}
           </span>

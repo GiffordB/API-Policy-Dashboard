@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { DashboardData, ItemDTO, PersonDTO } from "@/lib/dto";
 
@@ -26,13 +26,6 @@ const POSITIONS = [
   { id: "MONITOR", nm: "Monitor",         sig: "\u25cb" },
 ] as const;
 const POS = Object.fromEntries(POSITIONS.map((p) => [p.id, p]));
-
-const TABS = [
-  { id: "FEDERAL",  label: "Federal rulemaking" },
-  { id: "CONGRESS", label: "Congress" },
-  { id: "STATE",    label: "States" },
-  { id: "COURT",    label: "Litigation" },
-] as const;
 
 const STAGE_SETS: Record<string, string[]> = {
   FEDERAL:  ["Pre-rule", "Proposed", "Comment open", "OMB review", "Final", "Effective"],
@@ -105,8 +98,15 @@ const fmtDate = (iso: string) =>
 
 /* ------------------------------------------------------------------ */
 
-export default function Dashboard({ data }: { data: DashboardData }) {
+type TrackDef = { slug: string; track: string; label: string; blurb: string };
+
+export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks }: {
+  data: DashboardData;
+  track: string; trackLabel: string; trackBlurb: string;
+  tracks: TrackDef[];
+}) {
   const router = useRouter();
+  const params = useSearchParams();
   const { divisions, people, items, audits, runs, monthly } = data;
   const DIV = useMemo(() => Object.fromEntries(divisions.map((d) => [d.id, d])), [divisions]);
 
@@ -114,7 +114,6 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   const [division, setDivision] = useState("all");
   /** "" is everyone. Otherwise a person's id — the whole page narrows to them. */
   const [owner, setOwner] = useState("");
-  const [tab, setTab] = useState<string>("FEDERAL");
   const [topic, setTopic] = useState("All");
   const [query, setQuery] = useState("");
   const [showGhost, setShowGhost] = useState(false);
@@ -170,12 +169,22 @@ export default function Dashboard({ data }: { data: DashboardData }) {
       .filter(inDivision)
       .filter(isOwner)
       .filter((i) => showGhost || live(i))
-      .filter((i) => i.track === tab)
+      .filter((i) => i.track === track)
       .filter((i) => topic === "All" || i.topics.includes(topic))
       .sort(byRelevance);
-  }, [items, inDivision, isOwner, showGhost, tab, topic, query]);
+  }, [items, inDivision, isOwner, showGhost, track, topic, query]);
 
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
+
+  // Arriving from another page with ?open=<docket>.
+  useEffect(() => {
+    const docket = params.get("open");
+    if (!docket) return;
+    const hit = items.find((i) => i.docket === docket);
+    if (hit) { setOpenId(hit.id); if (!live(hit)) setShowGhost(true); }
+    router.replace(`/${tracks.find((t) => t.track === track)?.slug ?? "regulatory"}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---- writes ---- */
   const patch = async (id: string, body: Record<string, unknown>) => {
@@ -204,22 +213,28 @@ export default function Dashboard({ data }: { data: DashboardData }) {
     [scoped]);
 
   const jump = (i: ItemDTO) => {
+    // Another track lives on another page. Carry the item across so the click
+    // lands on it rather than on that page's first row.
+    if (i.track !== track) {
+      const to = tracks.find((t) => t.track === i.track);
+      if (to) { router.push(`/${to.slug}?open=${encodeURIComponent(i.docket)}`); return; }
+    }
     if (division !== "all" && division !== i.divisionId) setDivision(i.divisionId);
     if (owner && i.ownerId !== owner) changeOwner("");
-    setTab(i.track); setTopic("All"); setQuery("");
+    setTopic("All"); setQuery("");
     if (!live(i)) setShowGhost(true);
     setOpenId(i.id);
   };
 
   const topics = useMemo(() => {
-    const pool = scoped.filter((i) => i.track === tab);
+    const pool = scoped.filter((i) => i.track === track);
     const freq: Record<string, number> = {};
     pool.flatMap((i) => i.topics).forEach((t) => (freq[t] = (freq[t] ?? 0) + 1));
     const top = Object.keys(freq).sort((a, b) => freq[b] - freq[a] || a.localeCompare(b)).slice(0, 8).sort();
     return ["All", ...new Set(topic === "All" ? top : [...top, topic])];
-  }, [scoped, tab, topic]);
+  }, [scoped, track, topic]);
 
-  const ghostCount = items.filter((i) => inDivision(i) && !live(i) && i.track === tab).length;
+  const ghostCount = items.filter((i) => inDivision(i) && !live(i) && i.track === track).length;
 
   return (
     <>
@@ -243,7 +258,8 @@ export default function Dashboard({ data }: { data: DashboardData }) {
         <div className="main" style={searching ? { marginTop: 18, gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <section className="panel" aria-label="Tracked items">
             <div className="panel-hd" style={{ borderBottom: 0, paddingBottom: 2 }}>
-              <h2>{searching ? "Search results" : ownerName ? `${ownerName}'s items` : "Tracked items"}</h2>
+              <h2>{searching ? "Search results" : ownerName ? `${ownerName}'s ${trackLabel.toLowerCase()} items` : trackLabel}</h2>
+              {!searching && !ownerName && <span className="count">{trackBlurb}</span>}
               {!searching && ownerName && (
                 <span className="count">{scoped.length} across every division</span>
               )}
@@ -264,15 +280,14 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                 <button className="chip spacer" onClick={() => setQuery("")}>Clear search</button>
               </div>
             ) : (
-            <div className="tabs" role="tablist">
-              {TABS.map((t) => {
-                const n = scoped.filter((i) => i.track === t.id).length;
+            <div className="tabs">
+              {tracks.map((t) => {
+                const n = items.filter((i) => live(i) && isOwner(i) && i.track === t.track).length;
                 return (
-                  <button key={t.id} className="tab" role="tab" aria-selected={t.id === tab}
-                          disabled={!n} style={n ? undefined : { opacity: 0.45 }}
-                          onClick={() => { setTab(t.id); setTopic("All"); }}>
+                  <Link key={t.slug} href={`/${t.slug}`} className="tab"
+                        aria-selected={t.track === track} style={{ textDecoration: "none" }}>
                     {t.label}<span className="tc">{n}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -351,7 +366,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
                           <div className="dvtag">
                             <i style={{ background: d?.colorVar }} />{d?.name}
                             {searching && <span style={{ color: "var(--muted)" }}>
-                              {" · "}{TABS.find((t) => t.id === it.track)?.label}
+                              {" · "}{tracks.find((t) => t.track === it.track)?.label}
                             </span>}
                           </div>
                           <div className="it-title">{it.title}</div>

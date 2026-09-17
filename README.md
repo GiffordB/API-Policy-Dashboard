@@ -8,6 +8,22 @@ The page is organised around five policy divisions — Upstream, Midstream,
 Downstream, Natural Gas Markets and Corporate Policy — plus an **Unassigned**
 bucket for records the collectors could not confidently route.
 
+## Pages
+
+One page per track, because a policy team works one at a time and a page can be
+bookmarked and sent to a colleague:
+
+| Path | What it holds |
+|---|---|
+| `/regulatory` | Federal agency rulemaking |
+| `/congress` | Bills and resolutions |
+| `/states` | State legislatures |
+| `/litigation` | Dockets and opinions |
+| `/coverage` | What the collectors look for |
+
+`/` redirects to `/regulatory`. Opening an item that lives on another track
+navigates there and opens it, rather than dropping you on that page's first row.
+
 ## The coverage page
 
 `/coverage` is the answer to "what do we actually scrape the federal sites for".
