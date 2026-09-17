@@ -38,3 +38,7 @@ services:
         value: "1"
       - key: CLASSIFY_CAP
         value: "25"
+      # State legislatures, paused pending a decision on the data source.
+      # Set to "1" to resume the daily sweep.
+      - key: STATES_ENABLED
+        value: "0"
