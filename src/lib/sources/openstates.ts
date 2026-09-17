@@ -34,7 +34,11 @@ function requireKey(): string {
  * Bills in any state whose text matches `term` and that have moved since
  * `actionSince` (YYYY-MM-DD). Newest action first, capped by `maxPages`.
  */
-export async function searchBills(term: string, actionSince: string, maxPages = 3): Promise<StateBill[]> {
+export class RateLimited extends Error {
+  constructor() { super("Open States rate limit — about ten requests a minute, a few hundred a day."); }
+}
+
+export async function searchBills(term: string, actionSince: string, maxPages = 1): Promise<StateBill[]> {
   const key = requireKey();
   const out: StateBill[] = [];
   const perPage = 20;                     // the API's ceiling
@@ -51,7 +55,7 @@ export async function searchBills(term: string, actionSince: string, maxPages = 
       headers: { "x-api-key": key, accept: "application/json" },
       cache: "no-store",
     });
-    if (res.status === 429) throw new Error("Open States rate limit reached — the free key allows a few hundred requests a day.");
+    if (res.status === 429) throw new RateLimited();
     if (res.status === 404) break;
     if (!res.ok) throw new Error(`Open States ${res.status} ${res.statusText}`);
 

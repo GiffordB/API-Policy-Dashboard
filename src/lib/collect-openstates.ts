@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Priority, SourceKind, Track, WatchKind } from "@prisma/client";
-import { searchBills, billId, stageFor, type StateBill } from "@/lib/sources/openstates";
+import { searchBills, billId, stageFor, RateLimited, type StateBill } from "@/lib/sources/openstates";
 import { inferDivision, inferTopics } from "@/lib/routing";
 
 type Snapshot = { title: string; stage: string; action: string | null; actionDate: string | null };
@@ -19,24 +19,37 @@ function diff(before: Snapshot, after: Snapshot): string[] {
   return out;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * State bills matching the watchlist's terms.
  *
- * Open States searches every state at once, so this costs one request per term
- * rather than one per state. The JURISDICTION entries on the coverage page then
- * decide which states are kept — a national search narrowed to the states you
- * work, rather than fifty searches you cannot afford.
+ * Open States searches every state at once, so a term costs one request rather
+ * than fifty. The JURISDICTION entries on the coverage page then decide which
+ * states are kept. With none listed, every state is kept — a wide net you can
+ * see beats a silent filter.
  *
- * With no jurisdictions on the list, every state is kept. That is the honest
- * default: better a wide net you can see than a silent filter.
+ * The free key allows roughly ten requests a minute, which is the real
+ * constraint. So a run does not try to sweep every term: it takes the terms
+ * least recently swept, paces itself under the limit, and stops when its
+ * request or time budget runs out. Each run advances the queue, and over a few
+ * days every term comes round. Hitting the limit ends the run cleanly with
+ * whatever it found, rather than throwing the work away.
  */
-export async function collectOpenStates(sinceDays = 7) {
+export async function collectOpenStates(
+  sinceDays = 7,
+  { maxRequests = 8, maxMillis = 45_000, pauseMillis = 6_500 } = {}
+) {
   const actionSince = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
   const run = await prisma.agentRun.create({ data: { source: SourceKind.OPEN_STATES } });
   let checked = 0, created = 0, changed = 0, skipped = 0;
 
   try {
-    const terms = await prisma.watch.findMany({ where: { active: true, kind: WatchKind.TERM } });
+    const terms = await prisma.watch.findMany({
+      where: { active: true, kind: WatchKind.TERM },
+      orderBy: { lastRunAt: { sort: "asc", nulls: "first" } },   // round-robin across runs
+      take: maxRequests,
+    });
     const jurisdictions = await prisma.watch.findMany({
       where: { active: true, kind: WatchKind.JURISDICTION },
     });
@@ -52,9 +65,22 @@ export async function collectOpenStates(sinceDays = 7) {
 
     const hits = new Map<string, number>();
     const seen = new Set<string>();
+    const startedAt = Date.now();
+    const swept: string[] = [];
+    let limited = false;
 
-    for (const term of terms) {
-      const bills = await searchBills(term.value, actionSince);
+    for (const [n, term] of terms.entries()) {
+      if (Date.now() - startedAt > maxMillis) break;
+      if (n > 0) await sleep(pauseMillis);          // stay under ten a minute
+
+      let bills: StateBill[];
+      try {
+        bills = await searchBills(term.value, actionSince);
+      } catch (e) {
+        if (e instanceof RateLimited) { limited = true; break; }
+        throw e;
+      }
+      swept.push(term.label);
       for (const b of bills) {
         checked++;
         const where = b.jurisdiction?.name ?? "";
@@ -129,19 +155,33 @@ export async function collectOpenStates(sinceDays = 7) {
       }
     }
 
+    // Every term actually swept moves to the back of the queue, whether or not
+    // it found anything — otherwise a barren term is retried for ever.
     const now = new Date();
-    for (const [id, n] of hits) {
+    for (const term of terms) {
+      if (!swept.includes(term.label)) continue;
+      const n = hits.get(term.id) ?? 0;
       await prisma.watch.update({
-        where: { id },
+        where: { id: term.id },
         data: { lastRunAt: now, lastHits: n, totalHits: { increment: n } },
       });
     }
+
+    const waiting = await prisma.watch.count({
+      where: { active: true, kind: WatchKind.TERM, OR: [{ lastRunAt: null }, { lastRunAt: { lt: now } }] },
+    });
 
     await prisma.agentRun.update({
       where: { id: run.id },
       data: { finishedAt: new Date(), ok: true, checked, created, changed },
     });
-    return { ok: true, checked, created, changed, skipped };
+    return {
+      ok: true, checked, created, changed, skipped,
+      termsSwept: swept.length,
+      note: limited
+        ? `Stopped at the rate limit after ${swept.length} terms. ${waiting} still queued; the next run continues.`
+        : `Swept ${swept.length} terms. ${waiting} queued for the next run.`,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.agentRun.update({
