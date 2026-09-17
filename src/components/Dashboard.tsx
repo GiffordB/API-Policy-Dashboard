@@ -442,7 +442,7 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
       )}
 
       {adding && (
-        <AddDialog divisions={divisions} people={people} actor={actor} seed={query}
+        <AddDialog divisions={divisions} people={people} actor={actor} seed={query} tracks={tracks}
                    onClose={() => setAdding(false)}
                    onAdded={(id) => { setAdding(false); setOpenId(id); router.refresh(); }} />
       )}
@@ -701,13 +701,30 @@ function RightRail({ items, DIV, runs, division, onJump }: {
               <div className="hit">{r.created ? `+${r.created}` : ""} {r.changed ? `~${r.changed}` : ""}</div>
             </div>
           ))}
-          <div className="aghd">Not connected yet</div>
-          {["Regulations.gov dockets", "Congress.gov bills", "Open States bills", "CourtListener dockets"].map((n) => (
-            <div className="ag" key={n}>
-              <span className="sdot"><Shape s="warning" size={9} /></span>
-              <div className="body"><div className="nm">{n}</div><div className="mt">needs an API key</div></div>
-            </div>
-          ))}
+          {(() => {
+            // A hardcoded list of "not connected" sources goes stale the moment
+            // one connects. Derive it from what has actually run.
+            const ran = new Set(runs.map((r) => r.source));
+            const silent = [
+              ["FEDERAL_REGISTER", "Federal Register"],
+              ["CONGRESS_GOV", "Congress.gov"],
+              ["REGULATIONS_GOV", "Regulations.gov"],
+              ["OPEN_STATES", "Open States"],
+            ].filter(([id]) => !ran.has(id));
+            if (!silent.length) return null;
+            return (
+              <>
+                <div className="aghd">Nothing heard from</div>
+                {silent.map(([id, nm]) => (
+                  <div className="ag" key={id}>
+                    <span className="sdot"><Shape s="warning" size={9} /></span>
+                    <div className="body"><div className="nm">{nm}</div>
+                      <div className="mt">no run on record — check its key and the schedule</div></div>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
       </section>
     </div>
@@ -994,9 +1011,10 @@ type LookupHit = {
   suggestedDivision: string; topics: string[];
 };
 
-function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
+function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }: {
   divisions: { id: string; name: string }[]; people: PersonDTO[];
-  actor: string; seed: string; onClose: () => void; onAdded: (id: string) => void;
+  actor: string; seed: string; tracks: TrackDef[];
+  onClose: () => void; onAdded: (id: string) => void;
 }) {
   const [q, setQ] = useState(seed);
   const [hits, setHits] = useState<LookupHit[] | null>(null);
@@ -1006,7 +1024,7 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
   const [err, setErr] = useState("");
 
   const [form, setForm] = useState({
-    docket: "", title: "", agency: "", unit: "", stage: "Comment open",
+    docket: "", title: "", agency: "", unit: "", track: "FEDERAL", stage: "Comment open",
     commentDueAt: "", divisionId: divisions[0]?.id ?? "up", ownerId: "",
     priority: "MEDIUM", position: "PENDING", topics: "", sourceUrl: "",
   });
@@ -1069,7 +1087,7 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
           actor,
           docket: form.docket.trim(), title: form.title.trim(),
           agency: form.agency.trim() || "Unknown", unit: form.unit.trim() || undefined,
-          stage: form.stage,
+          track: form.track, stage: form.stage,
           commentDueAt: form.commentDueAt ? new Date(form.commentDueAt).toISOString() : null,
           divisionId: form.divisionId, ownerId: form.ownerId || null,
           priority: form.priority, position: form.position,
@@ -1144,9 +1162,17 @@ function AddDialog({ divisions, people, actor, seed, onClose, onAdded }: {
                 <input id="nOrg" value={form.agency} onChange={(e) => set("agency", e.target.value)} /></div>
             </div>
             <div className="grid2" style={{ marginBottom: 11 }}>
+              <div className="field"><label htmlFor="nTrack">Where it belongs</label>
+                <select id="nTrack" value={form.track}
+                        onChange={(e) => {
+                          const t = e.target.value;   // each track has its own stages
+                          setForm((f) => ({ ...f, track: t, stage: (STAGE_SETS[t] ?? STAGE_SETS.FEDERAL)[1] }));
+                        }}>
+                  {tracks.map((t) => <option key={t.slug} value={t.track}>{t.label}</option>)}
+                </select></div>
               <div className="field"><label htmlFor="nStage">Stage</label>
                 <select id="nStage" value={form.stage} onChange={(e) => set("stage", e.target.value)}>
-                  {STAGE_SETS.FEDERAL.map((x) => <option key={x}>{x}</option>)}
+                  {(STAGE_SETS[form.track] ?? STAGE_SETS.FEDERAL).map((x) => <option key={x}>{x}</option>)}
                 </select></div>
               <div className="field"><label htmlFor="nDue">Comments close on</label>
                 <input id="nDue" type="date" value={form.commentDueAt} onChange={(e) => set("commentDueAt", e.target.value)} /></div>

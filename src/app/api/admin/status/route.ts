@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
       ANTHROPIC_API_KEY: present("ANTHROPIC_API_KEY"),
       DATA_GOV_API_KEY: present("DATA_GOV_API_KEY"),
       OPENSTATES_API_KEY: present("OPENSTATES_API_KEY"),
-      COURTLISTENER_TOKEN: present("COURTLISTENER_TOKEN"),
       APP_PASSWORD: present("APP_PASSWORD"),
       COLLECT_SECRET: present("COLLECT_SECRET"),
     },

@@ -160,22 +160,6 @@ export default function Coverage({ data }: { data: CoverageData }) {
           );
         })}
 
-        <section className="panel" style={{ marginTop: 18 }} aria-label="Not connected yet">
-          <div className="panel-hd"><h2>Not connected yet</h2><span className="count">1 source</span></div>
-          <div className="agents">
-            {[
-              ["CourtListener", "Federal dockets and opinions.", "needs a free CourtListener token"],
-            ].map(([nm, what, why]) => (
-              <div className="ag" key={nm}>
-                <span className="sdot">
-                  <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 .8 9.4 9H.6z" fill="var(--warning)" /></svg>
-                </span>
-                <div className="body"><div className="nm">{nm}</div><div className="mt">{what}</div></div>
-                <div className="hit" style={{ maxWidth: 190, whiteSpace: "normal", textAlign: "right" }}>{why}</div>
-              </div>
-            ))}
-          </div>
-        </section>
 
         <footer>
           <b>Honest limits.</b> Only the Federal Register is connected, so this page describes

@@ -9,7 +9,9 @@ export const TRACKS = [
   { slug: "regulatory", track: Track.FEDERAL,  label: "Regulatory",  blurb: "Federal agency rulemaking" },
   { slug: "congress",   track: Track.CONGRESS, label: "Congress",    blurb: "Bills and resolutions" },
   { slug: "states",     track: Track.STATE,    label: "States",      blurb: "State legislatures" },
-  { slug: "litigation", track: Track.COURT,    label: "Litigation",  blurb: "Dockets and opinions" },
+  // No Litigation page. There is no court feed, and a page nothing can fill is
+  // a promise the tool does not keep. Track.COURT stays in the schema so the
+  // handful of records that use it are never orphaned.
 ] as const;
 
 export type TrackSlug = (typeof TRACKS)[number]["slug"];

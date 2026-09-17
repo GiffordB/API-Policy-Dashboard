@@ -18,7 +18,6 @@ bookmarked and sent to a colleague:
 | `/regulatory` | Federal agency rulemaking |
 | `/congress` | Bills and resolutions |
 | `/states` | State legislatures |
-| `/litigation` | Dockets and opinions |
 | `/coverage` | What the collectors look for |
 
 `/` redirects to `/regulatory`. Opening an item that lives on another track
@@ -80,7 +79,6 @@ the Federal Register for it now, or watch for it from now on.
 | Congress.gov (bills) | live |
 | Regulations.gov (filed comments) | live |
 | Open States (state bills) | needs `OPENSTATES_API_KEY` — daily, at `STATES_HOUR` UTC |
-| CourtListener (dockets) | needs `COURTLISTENER_TOKEN` |
 | OIRA / EO 12866 pipeline | not written |
 | Division analyst agents | not written |
 
