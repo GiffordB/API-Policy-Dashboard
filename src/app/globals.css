@@ -523,10 +523,12 @@ svg.chart text{font-family:var(--ui)}
 .dlrow .nm{font-size:12.5px; font-weight:600; line-height:1.3; min-width:0}
 .dlrow .st{margin-left:auto; display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums}
 .track{height:10px; background:var(--surface-3); border-radius:5px; position:relative; overflow:hidden}
-/* Anchored to the RIGHT, growing leftward. The bar is the runway being used
+/* Fills left to right, like a progress bar. The bar is the runway already used
    up, not the time remaining: a window closing tomorrow is nearly full and red,
-   one sixty days out is a sliver. The axis under it reads 60 down to 0. */
-.fill{position:absolute; inset:0 0 0 auto; border-radius:4px 0 0 4px; min-width:7px}
+   with only a sliver of empty track left on the right; one sixty days out is a
+   short bar with most of the track still empty ahead of it. The axis under it
+   reads 60 down to 0, so the right-hand end of the track is the deadline. */
+.fill{position:absolute; inset:0 auto 0 0; border-radius:0 4px 4px 0; min-width:7px}
 .dlmore{font-size:11.5px; color:var(--muted); border-top:1px dashed var(--rule); padding-top:9px}
 .axis-days{display:flex; justify-content:space-between; margin-top:9px; border-top:1px solid var(--rule); padding-top:5px}
 .axis-days span{font-family:var(--mono); font-size:10.5px; color:var(--muted)}
