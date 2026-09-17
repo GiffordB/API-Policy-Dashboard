@@ -114,6 +114,8 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
   const [division, setDivision] = useState("all");
   /** "" is everyone. Otherwise a person's id — the whole page narrows to them. */
   const [owner, setOwner] = useState("");
+  /** "" is any priority. */
+  const [prio, setPrio] = useState("");
   const [topic, setTopic] = useState("All");
   const [query, setQuery] = useState("");
   const [showGhost, setShowGhost] = useState(false);
@@ -126,20 +128,28 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
     try {
       const a = localStorage.getItem("pr_actor"); if (a) setActor(a);
       const o = localStorage.getItem("pr_owner"); if (o) setOwner(o);
+      const r = localStorage.getItem("pr_prio"); if (r) setPrio(r);
     } catch {}
   }, []);
   const changeOwner = (id: string) => {
     setOwner(id);
     try { localStorage.setItem("pr_owner", id); } catch {}
   };
+  const changePrio = (id: string) => {
+    setPrio(id);
+    try { localStorage.setItem("pr_prio", id); } catch {}
+  };
   const changeActor = (n: string) => { setActor(n); try { localStorage.setItem("pr_actor", n); } catch {} };
 
   const live = (i: ItemDTO) => i.priority !== "NOT_RELEVANT";
   const inDivision = useCallback((i: ItemDTO) => division === "all" || i.divisionId === division, [division]);
   const isOwner = useCallback((i: ItemDTO) => !owner || i.ownerId === owner, [owner]);
+  const isPrio = useCallback((i: ItemDTO) => !prio || i.priority === prio, [prio]);
+  // Asking for Not relevant means asking to see the ghosts.
+  const ghostsVisible = showGhost || prio === "NOT_RELEVANT";
   const scoped = useMemo(
-    () => items.filter((i) => inDivision(i) && isOwner(i) && live(i)),
-    [items, inDivision, isOwner]
+    () => items.filter((i) => inDivision(i) && isOwner(i) && isPrio(i) && (live(i) || prio === "NOT_RELEVANT")),
+    [items, inDivision, isOwner, isPrio, prio]
   );
   const ownerName = owner ? people.find((p) => p.id === owner)?.name ?? null : null;
 
@@ -168,11 +178,12 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
     return items
       .filter(inDivision)
       .filter(isOwner)
-      .filter((i) => showGhost || live(i))
+      .filter(isPrio)
+      .filter((i) => ghostsVisible || live(i))
       .filter((i) => i.track === track)
       .filter((i) => topic === "All" || i.topics.includes(topic))
       .sort(byRelevance);
-  }, [items, inDivision, isOwner, showGhost, track, topic, query]);
+  }, [items, inDivision, isOwner, isPrio, ghostsVisible, track, topic, query]);
 
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
 
@@ -249,8 +260,13 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
           <>
             <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
             <DeadlinePanel list={deadlines} DIV={DIV} />
-            <DivisionBar divisions={divisions} items={items.filter((i) => live(i) && isOwner(i))}
-                         active={division} onPick={(id) => { setDivision(id); setTopic("All"); }} />
+            <FilterBar
+              divisions={divisions} people={people} items={items} track={track}
+              actor={actor}
+              division={division} owner={owner} prio={prio}
+              onDivision={(id) => { setDivision(id); setTopic("All"); }}
+              onOwner={changeOwner} onPrio={changePrio}
+            />
             <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
           </>
         )}
@@ -295,22 +311,6 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
 
             {!searching && (
             <div className="filters">
-              <span className="flab">Owner</span>
-              <select value={owner} onChange={(e) => changeOwner(e.target.value)} aria-label="Filter by owner"
-                      style={{ font: "inherit", fontSize: 12.5, color: "var(--ink)",
-                               background: owner ? "var(--accent-soft)" : "var(--surface-2)",
-                               border: "1px solid var(--rule)", borderRadius: 5, padding: "4px 8px",
-                               fontWeight: owner ? 600 : 400, marginRight: 4 }}>
-                <option value="">Everyone</option>
-                {people.some((p) => p.name === actor) && (
-                  <option value={people.find((p) => p.name === actor)!.id}>Mine — {actor}</option>
-                )}
-                <optgroup label="Someone else">
-                  {people.filter((p) => p.name !== actor).map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </optgroup>
-              </select>
               <span className="flab">Topic</span>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 {topics.map((t) => (
@@ -408,7 +408,7 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
 
             {ghostCount > 0 && (
               <div className="ghostbar">
-                {showGhost ? `Showing ${ghostCount} not relevant` : `${ghostCount} marked not relevant`}
+                {ghostsVisible ? `Showing ${ghostCount} not relevant` : `${ghostCount} marked not relevant`}
                 <button onClick={() => setShowGhost((v) => !v)}>{showGhost ? "hide" : "show"}</button>
               </div>
             )}
@@ -562,8 +562,12 @@ function DeadlinePanel({ list, DIV }: { list: ItemDTO[]; DIV: Record<string, { n
           </span>
           <span className="st" style={{ color: STATUS[u].c }}><Shape s={u} size={9} /> {STATUS[u].label} · {it.days} d</span>
         </div>
-        <div className="track" role="img" aria-label={`${d?.name}, ${it.agency}: ${it.days} days until comments close.`}>
-          <div className="fill" style={{ width: `${Math.min((it.days ?? 0) / DL_MAX, 1) * 100}%`, background: STATUS[u].c }} />
+        <div className="track" role="img"
+             aria-label={`${d?.name}, ${it.agency}: ${it.days} days until comments close.`}>
+          {/* Fraction of the sixty-day runway already spent. */}
+          <div className="fill"
+               style={{ width: `${(1 - Math.min((it.days ?? DL_MAX) / DL_MAX, 1)) * 100}%`,
+                        background: STATUS[u].c }} />
         </div>
       </div>
     );
@@ -571,7 +575,9 @@ function DeadlinePanel({ list, DIV }: { list: ItemDTO[]; DIV: Record<string, { n
   const Col = ({ arr }: { arr: ItemDTO[] }) => (
     <div className="dlcol">
       <div className="dl">{arr.map((it) => <Bar key={it.id} it={it} />)}</div>
-      <div className="axis-days" aria-hidden="true"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 days</span></div>
+      <div className="axis-days" aria-hidden="true">
+        <span>60 days</span><span>45</span><span>30</span><span>15</span><span>0</span>
+      </div>
     </div>
   );
   return (
@@ -598,32 +604,109 @@ function DeadlinePanel({ list, DIV }: { list: ItemDTO[]; DIV: Record<string, { n
   );
 }
 
-function DivisionBar({ divisions, items, active, onPick }: {
+/**
+ * Three labelled rows of buttons: Department, Assigned to, Priority.
+ *
+ * "Assigned to" is deliberately not "Acting as". The header picker says who
+ * YOU are, and stamps your name on every edit; this row says whose work you
+ * are looking at. Two different questions, two different words, two different
+ * places — they were one dropdown away from being confused for each other.
+ *
+ * Every row shows counts, so a filter states its own cost before you press it.
+ */
+function FilterBar({
+  divisions, people, items, track, actor, division, owner, prio, onDivision, onOwner, onPrio,
+}: {
   divisions: { id: string; name: string; colorVar: string }[];
-  items: ItemDTO[]; active: string; onPick: (id: string) => void;
+  people: PersonDTO[];
+  items: ItemDTO[];
+  track: string; actor: string;
+  division: string; owner: string; prio: string;
+  onDivision: (id: string) => void;
+  onOwner: (id: string) => void;
+  onPrio: (id: string) => void;
 }) {
-  const Tile = ({ id, name, colour, pool }: { id: string; name: string; colour: string; pool: ItemDTO[] }) => {
-    const due = pool.filter((i) => i.isOpen && i.days !== null && i.days <= 30).length;
-    const urgentN = pool.filter((i) => i.isOpen && i.days !== null && i.days <= URGENT_DAYS).length;
-    const noOwner = pool.filter((i) => !i.ownerId).length;
-    const worst = pool.reduce<number | null>(
-      (m, i) => (!i.isOpen || i.days === null || i.days < 0 ? m : m === null || i.days < m ? i.days : m), null);
-    const u: StatusKey | null = urgentN ? "critical" : urgency(worst);
-    return (
-      <button className="dv" aria-pressed={active === id} style={{ ["--dvc" as string]: colour }} onClick={() => onPick(id)}>
-        <span className="nm">{name}</span>
-        <span className="ct"><b>{pool.length}</b><span>item{pool.length === 1 ? "" : "s"}</span></span>
-        <span className="ur" style={{ color: noOwner ? "var(--critical)" : u ? STATUS[u].c : "var(--muted)" }}>
-          {noOwner ? <><Shape s="critical" size={9} />{noOwner} owner needed</>
-                   : <>{u && <Shape s={u} size={9} />}{due ? `${due} due ≤30d` : "no open windows"}</>}
-        </span>
-      </button>
-    );
-  };
+  const onTrack = items.filter((i) => i.track === track);
+  const live = (i: ItemDTO) => i.priority !== "NOT_RELEVANT";
+
+  // Each row counts against the OTHER rows' filters, so the number on a button
+  // is what you would actually get by pressing it.
+  const forDivision = onTrack.filter((i) => (!owner || i.ownerId === owner) && (!prio ? live(i) : i.priority === prio));
+  const forOwner = onTrack.filter((i) => (division === "all" || i.divisionId === division) && (!prio ? live(i) : i.priority === prio));
+  const forPrio = onTrack.filter((i) => (division === "all" || i.divisionId === division) && (!owner || i.ownerId === owner));
+
+  const me = people.find((p) => p.name === actor) ?? null;
+  // Only people who actually own something here — nineteen buttons is not a filter.
+  const owners = people
+    .map((p) => ({ p, n: forOwner.filter((i) => i.ownerId === p.id).length }))
+    .filter((x) => x.n > 0 && x.p.id !== me?.id)
+    .sort((a, b) => b.n - a.n || a.p.name.localeCompare(b.p.name));
+  const mine = me ? forOwner.filter((i) => i.ownerId === me.id).length : 0;
+
+  const urgentIn = (pool: ItemDTO[]) =>
+    pool.some((i) => i.isOpen && i.days !== null && i.days >= 0 && i.days <= URGENT_DAYS);
+
   return (
-    <nav className="divbar" aria-label="Policy division">
-      <Tile id="all" name="All divisions" colour="var(--ink-2)" pool={items} />
-      {divisions.map((d) => <Tile key={d.id} id={d.id} name={d.name} colour={d.colorVar} pool={items.filter((i) => i.divisionId === d.id)} />)}
+    <nav className="filterbar" aria-label="Filters">
+      <div className="frow">
+        <span className="flab">Department</span>
+        <div className="chips">
+          <button className="chip" aria-pressed={division === "all"} onClick={() => onDivision("all")}>
+            All<span className="n">{forDivision.length}</span>
+          </button>
+          {divisions.map((d) => {
+            const pool = forDivision.filter((i) => i.divisionId === d.id);
+            if (!pool.length && division !== d.id) return null;
+            return (
+              <button key={d.id} className="chip" aria-pressed={division === d.id} onClick={() => onDivision(d.id)}>
+                <i className="sw" style={{ background: d.colorVar }} />{d.name}
+                <span className="n">{pool.length}</span>
+                {urgentIn(pool) && <i className="flag" title="Something closes inside 48 hours" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="frow">
+        <span className="flab">Assigned to</span>
+        <div className="chips">
+          <button className="chip" aria-pressed={owner === ""} onClick={() => onOwner("")}>
+            Everyone<span className="n">{forOwner.length}</span>
+          </button>
+          {me && (
+            <button className="chip" aria-pressed={owner === me.id} onClick={() => onOwner(me.id)}>
+              Mine<span className="n">{mine}</span>
+            </button>
+          )}
+          {owners.map(({ p, n }) => (
+            <button key={p.id} className="chip" aria-pressed={owner === p.id} onClick={() => onOwner(p.id)}>
+              {p.name}<span className="n">{n}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="frow">
+        <span className="flab">Priority</span>
+        <div className="chips">
+          <button className="chip" aria-pressed={prio === ""} onClick={() => onPrio("")}>
+            Any<span className="n">{forPrio.filter(live).length}</span>
+          </button>
+          {PRIORITIES.map((pr) => {
+            const n = forPrio.filter((i) => i.priority === pr.id).length;
+            if (!n && prio !== pr.id) return null;
+            return (
+              <button key={pr.id} className="chip" aria-pressed={prio === pr.id} onClick={() => onPrio(pr.id)}>
+                <span className={`prio ${pr.cls}`} style={{ gap: 5 }}>
+                  <span className="bars"><i /><i /><i /><i /></span>
+                </span>
+                {pr.nm}<span className="n">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </nav>
   );
 }
