@@ -269,7 +269,7 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
               onDivision={(id) => { setDivision(id); setTopic("All"); }}
               onOwner={changeOwner} onPrio={changePrio}
             />
-            <DeadlinePanel list={deadlines} DIV={DIV} />
+            <DeadlinePanel list={deadlines} DIV={DIV} onJump={jump} />
             <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
           </>
         )}
@@ -551,13 +551,20 @@ function UrgentBand({ list, DIV, onJump, nextOpen }: {
   );
 }
 
-function DeadlinePanel({ list, DIV }: { list: ItemDTO[]; DIV: Record<string, { name: string; colorVar: string }> }) {
+function DeadlinePanel({ list, DIV, onJump }: {
+  list: ItemDTO[];
+  DIV: Record<string, { name: string; colorVar: string }>;
+  onJump: (i: ItemDTO) => void;
+}) {
   const head = list.slice(0, DL_SHOWN), rest = list.slice(DL_SHOWN);
   const half = Math.ceil(head.length / 2);
   const Bar = ({ it }: { it: ItemDTO }) => {
     const u = urgency(it.days)!, d = DIV[it.divisionId];
     return (
-      <div className="dlrow">
+      // A bar is a record, so it opens the record. The urgent band already
+      // behaves this way; a deadline you can see but cannot act on is a dead end.
+      <button className="dlrow" onClick={() => onJump(it)}
+              title={`${it.agency} — ${it.title}`}>
         <div className="hd">
           <span className="nm">
             <i style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: d?.colorVar, marginRight: 6 }} />
@@ -565,14 +572,13 @@ function DeadlinePanel({ list, DIV }: { list: ItemDTO[]; DIV: Record<string, { n
           </span>
           <span className="st" style={{ color: STATUS[u].c }}><Shape s={u} size={9} /> {STATUS[u].label} · {it.days} d</span>
         </div>
-        <div className="track" role="img"
-             aria-label={`${d?.name}, ${it.agency}: ${it.days} days until comments close.`}>
+        <div className="track" aria-hidden="true">
           {/* Fraction of the sixty-day runway already spent. */}
           <div className="fill"
                style={{ width: `${(1 - Math.min((it.days ?? DL_MAX) / DL_MAX, 1)) * 100}%`,
                         background: STATUS[u].c }} />
         </div>
-      </div>
+      </button>
     );
   };
   const Col = ({ arr }: { arr: ItemDTO[] }) => (

@@ -519,6 +519,17 @@ svg.chart text{font-family:var(--ui)}
 
 /* deadline bars */
 .dl{display:flex; flex-direction:column; gap:13px}
+/* Each bar is a button: it opens the record, the same as a table row or an
+   urgent-band row. The reset keeps it looking exactly like the div it replaced,
+   so the affordance is the hover and the pointer, not a box around the bar. */
+.dlrow{
+  display:block; width:100%; text-align:left; appearance:none; background:transparent;
+  border:0; font:inherit; color:var(--ink); padding:3px 5px; margin:-3px -5px;
+  border-radius:5px; cursor:pointer;
+}
+.dlrow:hover{background:var(--surface-2)}
+.dlrow:hover .nm{color:var(--accent)}
+.dlrow:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
 .dlrow .hd{display:flex; align-items:baseline; gap:8px; margin-bottom:5px}
 .dlrow .nm{font-size:12.5px; font-weight:600; line-height:1.3; min-width:0}
 .dlrow .st{margin-left:auto; display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums}
