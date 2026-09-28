@@ -4,6 +4,7 @@ import {
   fetchRecentBills, billId, stageFor, publicUrl, type CongressBill,
 } from "@/lib/sources/congress";
 import { inferDivision, inferTopics } from "@/lib/routing";
+import { blockedDockets } from "@/lib/blocklist";
 
 type Snapshot = { title: string; stage: string; action: string | null; actionDate: string | null };
 
@@ -52,6 +53,7 @@ export async function collectCongress(sinceDays = 3) {
 
     const bills = await fetchRecentBills(since);
     checked = bills.length;
+    const blocked = await blockedDockets();
     const hits = new Map<string, number>();
 
     for (const b of bills) {
@@ -62,9 +64,13 @@ export async function collectCongress(sinceDays = 3) {
       const watch = pinned ?? term;
       if (!watch) continue;
 
+      // Somebody said do not track this bill. Putting it back would undo a
+      // decision, so it is not a hit for the watch that matched it either.
+      const docket = billId(b);
+      if (blocked.has(docket)) { skipped++; continue; }
+
       hits.set(watch.id, (hits.get(watch.id) ?? 0) + 1);
 
-      const docket = billId(b);
       const { stage, stageIndex } = stageFor(b);
       const snap = snapshotOf(b, stage);
       const nextLabel = b.latestAction

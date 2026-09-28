@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Position, Priority, SourceKind, Track } from "@prisma/client";
+import { liftBlock } from "@/lib/blocklist";
 
 const Body = z.object({
   actor: z.string().min(1),
@@ -33,6 +34,11 @@ export async function POST(req: NextRequest) {
   const clash = await prisma.item.findUnique({ where: { docket: b.docket } });
   if (clash) return NextResponse.json({ error: "That docket is already tracked.", id: clash.id }, { status: 409 });
 
+  // A direct add is the way back from "do not track". Adding the docket by
+  // hand is a person saying, plainly, that it matters after all — so it lifts
+  // the block rather than colliding with it.
+  const unblocked = await liftBlock(b.docket, b.actor);
+
   if (b.ownerId) {
     const p = await prisma.person.findUnique({ where: { id: b.ownerId } });
     if (!p || p.divisionId !== b.divisionId)
@@ -58,13 +64,20 @@ export async function POST(req: NextRequest) {
     },
   });
   await prisma.$transaction([
-    prisma.audit.create({ data: { itemId: item.id, actor: b.actor, field: "tracking", toValue: "added by hand" } }),
+    prisma.audit.create({
+      data: {
+        itemId: item.id, actor: b.actor, field: "tracking",
+        toValue: unblocked ? "added by hand, after being set to do not track" : "added by hand",
+      },
+    }),
     prisma.finding.create({
       data: {
         itemId: item.id, source: SourceKind.MANUAL,
-        summary: `Added by ${b.actor}. The collectors will watch this docket from now on.`,
+        summary: unblocked
+          ? `Added by ${b.actor}, lifting an earlier “do not track”. The collectors will follow this docket again — the record starts fresh, without the history it had before.`
+          : `Added by ${b.actor}. The collectors will watch this docket from now on.`,
       },
     }),
   ]);
-  return NextResponse.json({ ok: true, id: item.id });
+  return NextResponse.json({ ok: true, id: item.id, unblocked });
 }

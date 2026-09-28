@@ -211,6 +211,27 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
     } finally { setBusy(false); }
   };
 
+  /**
+   * "Do not track": the record leaves the system.
+   *
+   * The drawer closes first, because the thing it was showing no longer
+   * exists. What survives is a blocked docket on the coverage page and the
+   * audit trail.
+   */
+  const remove = async (id: string, reason: string) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actor, reason }),
+      });
+      if (!res.ok) { alert((await res.json()).error ?? "That record was not removed."); return; }
+      setOpenId(null);
+      router.refresh();
+    } finally { setBusy(false); }
+  };
+
   /* ---- urgent band: time decides membership, priority decides order ---- */
   const urgent = useMemo(() =>
     items
@@ -441,7 +462,8 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
       {openItem && (
         <Drawer item={openItem} DIV={DIV} divisions={divisions} people={people}
                 audits={audits.filter((a) => a.itemId === openItem.id)}
-                onClose={() => setOpenId(null)} onPatch={(b) => patch(openItem.id, b)} busy={busy} />
+                onClose={() => setOpenId(null)} onPatch={(b) => patch(openItem.id, b)}
+                onRemove={(reason) => remove(openItem.id, reason)} busy={busy} />
       )}
 
       {adding && (
@@ -910,7 +932,7 @@ function PriorityMenu({ at, current, onPick, onClose }: {
 /* drawer                                                             */
 /* ------------------------------------------------------------------ */
 
-function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }: {
+function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, onRemove, busy }: {
   item: ItemDTO;
   DIV: Record<string, { name: string; colorVar: string }>;
   divisions: { id: string; name: string }[];
@@ -918,12 +940,16 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
   audits: DashboardData["audits"];
   onClose: () => void;
   onPatch: (body: Record<string, unknown>) => void;
+  onRemove: (reason: string) => void;
   busy: boolean;
 }) {
   const d = DIV[item.divisionId];
   const u = item.isOpen ? urgency(item.days) : null;
   const stages = STAGE_SETS[item.track] ?? STAGE_SETS.FEDERAL;
   const roster = people.filter((p) => p.divisionId === item.divisionId);
+  // Removal asks twice: the first press explains, the second does it.
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -1072,6 +1098,45 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, busy }
             </dl>
           </div>
 
+          <div className="dsec danger">
+            <div className="dt">Stop tracking</div>
+            {!confirming ? (
+              <>
+                <p className="note" style={{ margin: "0 0 10px" }}>
+                  <b>Not relevant</b> keeps the record and greys it out. <b>Do not track</b> removes it:
+                  the record is deleted, the collectors will not bring it back, and the system stays
+                  smaller for it.
+                </p>
+                <button className="dngbtn" disabled={busy} onClick={() => setConfirming(true)}>
+                  Do not track this
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="note" style={{ margin: "0 0 10px" }}>
+                  This deletes <b>{item.docket}</b> along with its agent findings and comment counts.
+                  The docket goes on the not-tracked list on the{" "}
+                  <a href="/coverage">coverage page</a>, and the audit trail keeps who removed it.
+                  It is not an undo: adding the docket by hand starts a fresh record.
+                </p>
+                <div className="field" style={{ marginBottom: 10 }}>
+                  <label htmlFor="fWhy">Why (optional, kept with the record of the removal)</label>
+                  <input id="fWhy" value={reason} disabled={busy}
+                         placeholder="Routine paperwork, no API interest"
+                         onChange={(e) => setReason(e.target.value)} />
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="dngbtn go" disabled={busy} onClick={() => onRemove(reason)}>
+                    {busy ? "Removing…" : "Remove it from the system"}
+                  </button>
+                  <button className="chip" disabled={busy} onClick={() => setConfirming(false)}>
+                    Keep tracking it
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <div className="dsec">
             <div className="dt">Audit trail</div>
             <div className="audit">
@@ -1101,6 +1166,8 @@ type LookupHit = {
   docket: string; title: string; agency: string; unit: string | null; stage: string;
   commentDueAt: string | null; publishedOn: string; sourceUrl: string;
   suggestedDivision: string; topics: string[];
+  /** Somebody removed this docket with "do not track". Adding it lifts that. */
+  blocked: boolean;
 };
 
 function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }: {
@@ -1164,7 +1231,9 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
       divisionId: h.suggestedDivision, topics: h.topics.join(", "), sourceUrl: h.sourceUrl,
     }));
     setHits(null);
-    setMsg("Loaded. Check the department, then set an owner.");
+    setMsg(h.blocked
+      ? "Loaded. This docket was set to do not track — adding it lifts that and starts a fresh record."
+      : "Loaded. Check the department, then set an owner.");
   };
 
   const save = async () => {
@@ -1229,6 +1298,7 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
                         <span className="d">{h.docket}</span>
                         <span>{h.stage}</span>
                         {h.commentDueAt && <span>comments due {h.commentDueAt}</span>}
+                        {h.blocked && <span className="nodraft">set to do not track — adding it resumes tracking</span>}
                       </span>
                     </span>
                   </button>

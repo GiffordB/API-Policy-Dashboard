@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { Position, Priority } from "@prisma/client";
+import { Position, Priority, WatchKind } from "@prisma/client";
 
 const Body = z.object({
   actor: z.string().min(1),
@@ -90,4 +90,91 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     ...audits.map((a) => prisma.audit.create({ data: { itemId: id, actor, ...a } })),
   ]);
   return NextResponse.json({ ok: true });
+}
+
+const Remove = z.object({
+  actor: z.string().min(1),
+  reason: z.string().max(400).optional(),
+});
+
+/**
+ * "Do not track": delete the record, and remember not to collect it again.
+ *
+ * Deliberately stronger than the "Not relevant" priority, which only ghosts a
+ * record — that one stays in the database, stays in the counts, and every run
+ * still reads and updates it. This removes it: the row goes, and with it the
+ * findings and the stored snapshot.
+ *
+ * Two things outlive the record, both small:
+ *   - a watchlist row of kind BLOCK holding the docket, so the next collector
+ *     run does not put the same document straight back, and so the removal is
+ *     visible on the coverage page instead of being folklore;
+ *   - the audit trail, which keeps the docket and the title in its own text,
+ *     because the item id it used to point at no longer exists.
+ *
+ * It is not an undo. Adding the docket by hand lifts the block and starts a
+ * fresh record; the old findings and comment counts do not come back.
+ */
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const parsed = Remove.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  const { actor, reason } = parsed.data;
+
+  const item = await prisma.item.findUnique({ where: { id } });
+  if (!item) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  const label = `${item.docket} — ${item.title.slice(0, 160)}`;
+  const existing = await prisma.watch.findUnique({
+    where: { kind_value: { kind: WatchKind.BLOCK, value: item.docket } },
+  });
+
+  // A docket pinned on the watchlist would be fetched again on every run and
+  // then thrown away by the block — API calls spent on a decision already
+  // made. Blocking it pauses the pin, and says so in the trail.
+  const pin = await prisma.watch.findUnique({
+    where: { kind_value: { kind: WatchKind.DOCKET, value: item.docket } },
+  });
+
+  await prisma.$transaction([
+    // The audit is written first, and with no item id: the row it would point
+    // at is about to go, and the trail has to read without it.
+    prisma.audit.create({
+      data: {
+        actor, field: "tracking",
+        fromValue: label,
+        toValue: reason?.trim()
+          ? `do not track — removed (${reason.trim()})`
+          : "do not track — removed from the system",
+      },
+    }),
+    existing
+      ? prisma.watch.update({
+          where: { id: existing.id },
+          data: { active: true, addedBy: actor, note: reason?.trim() || existing.note, label: item.title.slice(0, 160) },
+        })
+      : prisma.watch.create({
+          data: {
+            kind: WatchKind.BLOCK, value: item.docket,
+            label: item.title.slice(0, 160),
+            note: reason?.trim() || null,
+            source: item.source, addedBy: actor,
+          },
+        }),
+    ...(pin && pin.active
+      ? [
+          prisma.watch.update({ where: { id: pin.id }, data: { active: false } }),
+          prisma.audit.create({
+            data: {
+              actor, field: "watchlist",
+              fromValue: `pinned docket “${pin.label}”`,
+              toValue: "paused, because the docket is now set to do not track",
+            },
+          }),
+        ]
+      : []),
+    prisma.item.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true, removed: item.docket, pinPaused: Boolean(pin?.active) });
 }

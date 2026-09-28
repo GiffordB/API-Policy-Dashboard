@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Priority, SourceKind, Track, WatchKind } from "@prisma/client";
 import { searchBills, billId, stageFor, RateLimited, type StateBill } from "@/lib/sources/openstates";
 import { inferDivision, inferTopics } from "@/lib/routing";
+import { blockedDockets } from "@/lib/blocklist";
 
 type Snapshot = { title: string; stage: string; action: string | null; actionDate: string | null };
 
@@ -73,6 +74,7 @@ export async function collectOpenStates(
 
     const hits = new Map<string, number>();
     const seen = new Set<string>();
+    const blocked = await blockedDockets();
     const startedAt = Date.now();
     const swept: string[] = [];
     let limited = false;
@@ -97,6 +99,8 @@ export async function collectOpenStates(
         const docket = billId(b);
         if (seen.has(docket)) continue;
         seen.add(docket);
+        // Somebody said do not track this bill. It was deleted on purpose.
+        if (blocked.has(docket)) continue;
         hits.set(term.id, (hits.get(term.id) ?? 0) + 1);
 
         const { stage, stageIndex } = stageFor(b);

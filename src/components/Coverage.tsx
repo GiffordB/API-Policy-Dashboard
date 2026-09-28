@@ -10,6 +10,7 @@ const KINDS = {
   TERM:    { title: "Terms we always search", blurb: "Searched across every connected source — the whole Federal Register, including agencies not on the list above, and every bill that moved in Congress. This is how something outside the usual sources still reaches you." },
   DOCKET:  { title: "Dockets we follow",      blurb: "Pinned by docket number and followed whatever the documents are titled." },
   EXCLUDE: { title: "Dropped on purpose",     blurb: "Two thirds of the Federal Register is routine paperwork. These patterns drop it before it reaches the dashboard. Switch one off if you think we are missing something." },
+  BLOCK:   { title: "Not tracked",             blurb: "Records somebody removed with “do not track”. The record itself is gone — this is the short note that stops the collectors putting it back. Switch one off, or add the docket by hand from the dashboard, and it is tracked again from the next run; the record starts fresh, without the history it had before." },
 } as const;
 
 export default function Coverage({ data }: { data: CoverageData }) {
@@ -88,14 +89,18 @@ export default function Coverage({ data }: { data: CoverageData }) {
             <div className="n">{untraced > 0 ? `${untraced} pre-date the watchlist` : "all traced to a watch"}</div></div>
         </section>
 
-        {(["AGENCY", "TERM", "DOCKET", "EXCLUDE"] as const).map((kind) => {
+        {(["AGENCY", "TERM", "DOCKET", "EXCLUDE", "BLOCK"] as const).map((kind) => {
           const rows = by(kind);
           const meta = KINDS[kind];
+          // Nothing removed yet, nothing to explain.
+          if (kind === "BLOCK" && rows.length === 0) return null;
           return (
             <section className="panel" style={{ marginTop: 18 }} key={kind} aria-label={meta.title}>
               <div className="panel-hd">
                 <h2>{meta.title}</h2>
-                <span className="count">{rows.filter((r) => r.active).length} active</span>
+                <span className="count">
+                  {rows.filter((r) => r.active).length} {kind === "BLOCK" ? "removed" : "active"}
+                </span>
                 {(kind === "TERM" || kind === "DOCKET") && (
                   <button className="addbtn spacer" onClick={() => { setErr(""); setAdding(kind); }}>
                     + Add {kind === "TERM" ? "a term" : "a docket"}
@@ -113,11 +118,13 @@ export default function Coverage({ data }: { data: CoverageData }) {
                   <table className="items" style={{ minWidth: 700 }}>
                     <thead>
                       <tr>
-                        <th scope="col">{kind === "EXCLUDE" ? "Pattern" : "What we look for"}</th>
+                        <th scope="col">
+                          {kind === "EXCLUDE" ? "Pattern" : kind === "BLOCK" ? "Removed record" : "What we look for"}
+                        </th>
                         <th scope="col">Division</th>
                         <th scope="col">{kind === "EXCLUDE" ? "Dropped, last run" : "Found, last run"}</th>
                         <th scope="col">Records held</th>
-                        <th scope="col">Added by</th>
+                        <th scope="col">{kind === "BLOCK" ? "Removed by" : "Added by"}</th>
                         <th scope="col" style={{ width: 96 }}>State</th>
                       </tr>
                     </thead>
@@ -136,14 +143,22 @@ export default function Coverage({ data }: { data: CoverageData }) {
                               </span>
                             ) : <span style={{ color: "var(--muted)", fontSize: 12 }}>all</span>}
                           </td>
-                          <td style={{ fontVariantNumeric: "tabular-nums" }}>{w.lastHits}</td>
                           <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                            {kind === "EXCLUDE" ? <span style={{ color: "var(--muted)" }}>—</span> : w.found}
+                            {kind === "BLOCK" ? <span style={{ color: "var(--muted)" }}>—</span> : w.lastHits}
+                          </td>
+                          <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                            {kind === "EXCLUDE" || kind === "BLOCK"
+                              ? <span style={{ color: "var(--muted)" }}>—</span> : w.found}
                           </td>
                           <td style={{ fontSize: 12, color: "var(--ink-2)" }}>{w.addedBy}</td>
                           <td>
-                            <button className="chip" aria-pressed={w.active} disabled={busy} onClick={() => toggle(w)}>
-                              {w.active ? "Watching" : "Paused"}
+                            <button className="chip" aria-pressed={w.active} disabled={busy} onClick={() => toggle(w)}
+                                    title={kind === "BLOCK"
+                                      ? "Press to let the collectors find this docket again"
+                                      : undefined}>
+                              {kind === "BLOCK"
+                                ? (w.active ? "Not tracked" : "Tracking again")
+                                : (w.active ? "Watching" : "Paused")}
                             </button>
                           </td>
                         </tr>

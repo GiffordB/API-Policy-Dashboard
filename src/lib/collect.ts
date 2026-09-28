@@ -5,6 +5,7 @@ import {
   DEFAULT_AGENCIES, DEFAULT_EXCLUDES, type FrDoc,
 } from "@/lib/sources/federal-register";
 import { inferDivision, inferTopics, guessPriority } from "@/lib/routing";
+import { blockedDockets } from "@/lib/blocklist";
 
 type Snapshot = {
   title: string; stage: string; commentsCloseOn: string | null;
@@ -62,7 +63,7 @@ async function loadWatchlist() {
   };
 }
 
-type Tally = { created: number; changed: number; skipped: number };
+type Tally = { created: number; changed: number; skipped: number; blocked: number };
 
 /** A comment window shut this long ago is history, not work. */
 export const STALE_AFTER_DAYS = 365;
@@ -98,8 +99,11 @@ async function archiveStale(): Promise<number> {
  * Agent-owned fields only — a human's priority, division and owner are never
  * overwritten. `watchId` records which watchlist entry brought it in.
  */
-async function ingest(doc: FrDoc, watchId: string | null, tally: Tally) {
+async function ingest(doc: FrDoc, watchId: string | null, tally: Tally, blocked: Set<string>) {
   const docket = docketFor(doc);
+  // Somebody said do not track this one. It was deleted on purpose, so putting
+  // it back would undo a decision rather than find something new.
+  if (blocked.has(docket)) { tally.blocked++; return; }
   // Never start tracking something whose comment window shut a year ago.
   if (doc.comments_close_on && new Date(doc.comments_close_on) < staleBefore()) {
     const seen = await prisma.item.findUnique({ where: { docket }, select: { id: true } });
@@ -189,11 +193,12 @@ async function ingest(doc: FrDoc, watchId: string | null, tally: Tally) {
 export async function collectFederalRegister(sinceDays = 30) {
   const since = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
   const run = await prisma.agentRun.create({ data: { source: SourceKind.FEDERAL_REGISTER } });
-  const tally: Tally = { created: 0, changed: 0, skipped: 0 };
+  const tally: Tally = { created: 0, changed: 0, skipped: 0, blocked: 0 };
   let checked = 0;
 
   try {
     const wl = await loadWatchlist();
+    const blocked = await blockedDockets();
     const seen = new Set<string>();
     const now = new Date();
 
@@ -209,7 +214,7 @@ export async function collectFederalRegister(sinceDays = 30) {
       const watch = slug ? bySlug.get(slug) ?? null : null;
       if (watch) hits.set(watch.id, (hits.get(watch.id) ?? 0) + 1);
       seen.add(docketFor(doc));
-      await ingest(doc, watch?.id ?? null, tally);
+      await ingest(doc, watch?.id ?? null, tally, blocked);
     }
 
     // 2. the term sweep — reaches past the agency list
@@ -224,7 +229,7 @@ export async function collectFederalRegister(sinceDays = 30) {
         if (seen.has(key)) continue;
         seen.add(key);
         n++;
-        await ingest(doc, term.id, tally);
+        await ingest(doc, term.id, tally, blocked);
       }
       hits.set(term.id, n);
     }
@@ -239,7 +244,7 @@ export async function collectFederalRegister(sinceDays = 30) {
         if (seen.has(key)) continue;
         seen.add(key);
         n++;
-        await ingest(doc, pin.id, tally);   // a pinned docket is never noise
+        await ingest(doc, pin.id, tally, blocked);   // a pinned docket is never noise
       }
       hits.set(pin.id, n);
     }

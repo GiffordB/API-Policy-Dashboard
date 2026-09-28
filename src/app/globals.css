@@ -575,6 +575,30 @@ svg.chart text{font-family:var(--ui)}
   font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
   color:var(--muted); margin-bottom:8px;
 }
+/* The one destructive control in the drawer.
+   It borrows the alert tokens rather than inventing a second red: in this
+   interface red means "this needs attention now", and deleting a record is the
+   only control that earns the same weight. It stays an outline until the
+   second press, so the solid version only ever appears on the button that
+   actually removes something. */
+.dsec.danger{
+  border:1px solid var(--alert-border); background:var(--alert-bg);
+  border-radius:7px; padding:13px;
+}
+.dsec.danger > .dt{color:var(--alert-ink)}
+.dsec.danger .note{color:var(--ink-2)}
+.dngbtn{
+  appearance:none; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+  border-radius:5px; padding:7px 12px;
+  border:1px solid var(--alert-border); background:var(--surface);
+  color:var(--alert-ink);
+}
+.dngbtn:hover{background:var(--alert-hover)}
+.dngbtn.go{background:var(--critical); border-color:var(--critical); color:#fff}
+.dngbtn.go:hover{filter:brightness(1.06)}
+.dngbtn:disabled{opacity:.6; cursor:default}
+.dngbtn:focus-visible{outline:2px solid var(--alert-ink); outline-offset:1px}
+
 .kv{display:grid; grid-template-columns:104px minmax(0,1fr); gap:7px 12px; font-size:13px}
 .kv dt{color:var(--muted); font-size:12px}
 .kv dd{margin:0; color:var(--ink)}

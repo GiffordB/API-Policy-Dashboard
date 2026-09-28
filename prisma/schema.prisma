@@ -80,6 +80,7 @@ enum WatchKind {
   DOCKET    // pin one docket and follow it whatever it is called
   EXCLUDE      // drop anything whose title matches this pattern
   JURISDICTION // a state legislature worth reading
+  BLOCK        // one docket a person said do not track — never collect it again
 }
 
 model Watch {
@@ -183,11 +184,15 @@ model Finding {
   @@index([itemId, foundAt])
 }
 
-// Every human edit. Never deleted.
+// Every human edit. Never deleted — not even when the item is.
+//
+// Do not track deletes the item outright, so the link is cut rather than
+// followed: the audit row survives with itemId null, and the removal row
+// carries the docket and title in its own text so the trail still reads.
 model Audit {
   id        String   @id @default(cuid())
   itemId    String?
-  item      Item?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item      Item?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
   actor     String                    // the person's name at the time of the edit
   field     String                    // priority, division, owner, tracking
   fromValue String?

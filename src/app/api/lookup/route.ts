@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchOne, search, stageFor, docketFor, agencyShortName } from "@/lib/sources/federal-register";
 import { inferDivision, inferTopics } from "@/lib/routing";
+import { blockedDockets } from "@/lib/blocklist";
 
 /**
  * Backs the "add a reg" form.
@@ -18,11 +19,16 @@ export async function GET(req: NextRequest) {
 
   try {
     const docs = key ? [await fetchOne(key)].filter(Boolean) : await search(q, 12);
+    // A hit somebody removed with "do not track" is still shown, and marked.
+    // Hiding it would look like the search was broken; the form says plainly
+    // that adding it lifts the block.
+    const blocked = await blockedDockets();
     const results = (docs as NonNullable<Awaited<ReturnType<typeof fetchOne>>>[]).map((doc) => {
       const agency = agencyShortName(doc);
       const { stage } = stageFor(doc);
       return {
         docket: docketFor(doc),
+        blocked: blocked.has(docketFor(doc)),
         title: doc.title,
         agency,
         unit: doc.agencies?.[0]?.name ?? null,
