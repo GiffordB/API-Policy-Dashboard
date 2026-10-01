@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { CoverageData, WatchDTO } from "@/lib/coverage";
 
 const KINDS = {
-  AGENCY:  { title: "Agencies swept",        blurb: "Every rule, proposal and notice these agencies publish is read on each run." },
+  AGENCY:  { title: "Agencies swept",        blurb: "Every rule, proposal and notice these agencies publish is read on each run. Add one from the Federal Register's own list of 473 — that way the slug is right, and a watch cannot sit there finding nothing. Removing an agency stops new records; the ones it already found stay." },
   TERM:    { title: "Terms we always search", blurb: "Searched across every connected source — the whole Federal Register, including agencies not on the list above, and every bill that moved in Congress. This is how something outside the usual sources still reaches you." },
   DOCKET:  { title: "Dockets we follow",      blurb: "Pinned by docket number and followed whatever the documents are titled." },
   EXCLUDE: { title: "Dropped on purpose",     blurb: "Two thirds of the Federal Register is routine paperwork. These patterns drop it before it reaches the dashboard. Switch one off if you think we are missing something." },
@@ -21,7 +21,7 @@ export default function Coverage({ data }: { data: CoverageData }) {
 
   const [actor, setActor] = useState("setup");
   const [busy, setBusy] = useState(false);
-  const [adding, setAdding] = useState<null | "TERM" | "DOCKET">(null);
+  const [adding, setAdding] = useState<null | "TERM" | "DOCKET" | "AGENCY">(null);
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -101,9 +101,9 @@ export default function Coverage({ data }: { data: CoverageData }) {
                 <span className="count">
                   {rows.filter((r) => r.active).length} {kind === "BLOCK" ? "removed" : "active"}
                 </span>
-                {(kind === "TERM" || kind === "DOCKET") && (
+                {(kind === "TERM" || kind === "DOCKET" || kind === "AGENCY") && (
                   <button className="addbtn spacer" onClick={() => { setErr(""); setAdding(kind); }}>
-                    + Add {kind === "TERM" ? "a term" : "a docket"}
+                    + Add {kind === "TERM" ? "a term" : kind === "DOCKET" ? "a docket" : "an agency"}
                   </button>
                 )}
               </div>
@@ -155,10 +155,16 @@ export default function Coverage({ data }: { data: CoverageData }) {
                             <button className="chip" aria-pressed={w.active} disabled={busy} onClick={() => toggle(w)}
                                     title={kind === "BLOCK"
                                       ? "Press to let the collectors find this docket again"
-                                      : undefined}>
+                                      : kind === "AGENCY"
+                                        ? (w.active
+                                            ? "Press to remove this agency: no new records, the old ones stay"
+                                            : "Press to sweep this agency again")
+                                        : undefined}>
                               {kind === "BLOCK"
                                 ? (w.active ? "Not tracked" : "Tracking again")
-                                : (w.active ? "Watching" : "Paused")}
+                                : kind === "AGENCY"
+                                  ? (w.active ? "Swept" : "Removed")
+                                  : (w.active ? "Watching" : "Paused")}
                             </button>
                           </td>
                         </tr>
@@ -191,17 +197,42 @@ export default function Coverage({ data }: { data: CoverageData }) {
   );
 }
 
+type AgencyHit = {
+  slug: string; name: string; shortName: string | null;
+  watched: boolean; paused: boolean;
+};
+
 function AddWatch({ kind, divisions, actor, seed, error, setError, onClose, onDone }: {
-  kind: "TERM" | "DOCKET";
+  kind: "TERM" | "DOCKET" | "AGENCY";
   divisions: { id: string; name: string }[];
   actor: string; seed: string; error: string;
   setError: (s: string) => void; onClose: () => void; onDone: () => void;
 }) {
-  const [value, setValue] = useState(seed);
-  const [label, setLabel] = useState(seed);
+  const [value, setValue] = useState(kind === "AGENCY" ? "" : seed);
+  const [label, setLabel] = useState(kind === "AGENCY" ? "" : seed);
   const [note, setNote] = useState("");
   const [divisionId, setDivisionId] = useState("");
   const [saving, setSaving] = useState(false);
+  // The agency picker. An agency is chosen from the Federal Register's own
+  // list, never typed: the sweep is keyed on the slug, and a slug somebody
+  // remembered wrong is a watch that finds nothing and never says why.
+  const [find, setFind] = useState("");
+  const [hits, setHits] = useState<AgencyHit[] | null>(null);
+  /** The Federal Register's answer to a word it does not use, such as OIRA. */
+  const [hint, setHint] = useState("");
+  const [looking, setLooking] = useState(false);
+
+  const lookupAgency = async (q: string) => {
+    setLooking(true); setError("");
+    try {
+      const res = await fetch(`/api/agencies?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (json.error) setError(json.error);
+      setHint(typeof json.note === "string" ? json.note : "");
+      setHits((json.results ?? []) as AgencyHit[]);
+    } catch { setError("The Federal Register's agency list could not be read."); }
+    finally { setLooking(false); }
+  };
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -211,7 +242,8 @@ function AddWatch({ kind, divisions, actor, seed, error, setError, onClose, onDo
 
   const save = async () => {
     setError("");
-    if (value.trim().length < 2) return setError("Give it something to search for.");
+    if (value.trim().length < 2)
+      return setError(kind === "AGENCY" ? "Choose an agency from the list." : "Give it something to search for.");
     setSaving(true);
     try {
       const res = await fetch("/api/watches", {
@@ -235,19 +267,78 @@ function AddWatch({ kind, divisions, actor, seed, error, setError, onClose, onDo
       <aside className="drawer show" role="dialog" aria-modal="true" aria-label={`Add a ${kind.toLowerCase()}`}>
         <div className="dhd">
           <div style={{ minWidth: 0 }}>
-            <h3>{kind === "TERM" ? "Search for this from now on" : "Follow this docket"}</h3>
+            <h3>
+              {kind === "TERM" ? "Search for this from now on"
+                : kind === "DOCKET" ? "Follow this docket"
+                : "Sweep an agency"}
+            </h3>
             <div className="dk">Takes effect on the next collector run</div>
           </div>
           <button className="xbtn" onClick={onClose} aria-label="Close">×</button>
         </div>
         <div className="dbody">
           <div className="dsec">
-            <div className="field" style={{ marginBottom: 11 }}>
-              <label htmlFor="wValue">{kind === "TERM" ? "Words to search" : "Docket number"}</label>
-              <input id="wValue" value={value} autoFocus
-                     onChange={(e) => { setValue(e.target.value); if (!label || label === value) setLabel(e.target.value); }}
-                     placeholder={kind === "TERM" ? "class VI" : "EPA-HQ-OAR-2026-0177"} />
-            </div>
+            {kind === "AGENCY" ? (
+              <>
+                <div className="field" style={{ marginBottom: 9 }}>
+                  <label htmlFor="wFind">Find the agency</label>
+                  <input id="wFind" value={find} autoFocus
+                         onChange={(e) => setFind(e.target.value)}
+                         onKeyDown={(e) => { if (e.key === "Enter") lookupAgency(find); }}
+                         placeholder="interior, OIRA, mine safety" />
+                </div>
+                <div className="acts" style={{ marginBottom: 11 }}>
+                  <button className="btn pri" onClick={() => lookupAgency(find)} disabled={looking}>
+                    {looking ? "Looking…" : "Search the list"}
+                  </button>
+                  {value && <span className="note" style={{ alignSelf: "center" }}>Chosen: <b>{label}</b> — {value}</span>}
+                </div>
+                {hint && (
+                  <p className="note" style={{ margin: "0 0 11px", padding: "9px 11px",
+                                               background: "var(--accent-soft)", borderRadius: 6,
+                                               color: "var(--ink-2)", maxWidth: "70ch" }}>
+                    {hint}
+                  </p>
+                )}
+                {hits && (
+                  hits.length === 0 ? (
+                    <p className="note" style={{ margin: "0 0 11px" }}>
+                      No agency in the Federal Register matches that. Try a department name, or part of one.
+                    </p>
+                  ) : (
+                    <div style={{ marginBottom: 13, maxHeight: 260, overflowY: "auto" }}>
+                      {hits.map((h) => (
+                        <button key={h.slug} className="urow" style={{ borderTop: "1px solid var(--rule)" }}
+                                disabled={h.watched}
+                                title={h.watched ? "Already swept" : h.paused ? "Removed earlier — adding it resumes the sweep" : ""}
+                                onClick={() => {
+                                  setValue(h.slug);
+                                  setLabel(h.shortName || h.name);
+                                  setHits(null);
+                                }}>
+                          <span className="mid">
+                            <span className="h">{h.name}</span>
+                            <span className="m">
+                              <span className="d">{h.slug}</span>
+                              {h.shortName && <span>{h.shortName}</span>}
+                              {h.watched && <span className="nodraft">already swept</span>}
+                              {h.paused && <span>removed earlier — this resumes it</span>}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                )}
+              </>
+            ) : (
+              <div className="field" style={{ marginBottom: 11 }}>
+                <label htmlFor="wValue">{kind === "TERM" ? "Words to search" : "Docket number"}</label>
+                <input id="wValue" value={value} autoFocus
+                       onChange={(e) => { setValue(e.target.value); if (!label || label === value) setLabel(e.target.value); }}
+                       placeholder={kind === "TERM" ? "class VI" : "EPA-HQ-OAR-2026-0177"} />
+              </div>
+            )}
             <div className="field" style={{ marginBottom: 11 }}>
               <label htmlFor="wLabel">What to call it</label>
               <input id="wLabel" value={label} onChange={(e) => setLabel(e.target.value)}
@@ -270,7 +361,9 @@ function AddWatch({ kind, divisions, actor, seed, error, setError, onClose, onDo
             <p className="note" style={{ margin: "11px 0 0" }}>
               {kind === "TERM"
                 ? "A term searches the whole Federal Register, including agencies not on the swept list. It runs on every collection from now on, and the coverage page shows what it finds."
-                : "A pinned docket is followed by number, so it stays tracked even when the documents in it are titled differently. Exclusion patterns never apply to a pinned docket."}
+                : kind === "DOCKET"
+                  ? "A pinned docket is followed by number, so it stays tracked even when the documents in it are titled differently. Exclusion patterns never apply to a pinned docket."
+                  : "A swept agency brings in everything it publishes, minus the exclusion patterns below. Expect volume: a department publishes hundreds of notices a year, and new arrivals land in the inbox for somebody to decide on. Looking for OIRA? It is on the list as OMB, and the note there explains what that can and cannot show you."}
             </p>
           </div>
           <div className="dsec">

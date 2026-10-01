@@ -575,6 +575,82 @@ svg.chart text{font-family:var(--ui)}
   font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
   color:var(--muted); margin-bottom:8px;
 }
+/* ---------- inbox and tracking ---------- */
+
+/* The two halves of the system, with the size of each. A segmented control
+   rather than tabs: tabs are places, and this is the same place seen two
+   ways. */
+.vswitch{
+  display:flex; align-items:center; gap:0; margin-top:18px; flex-wrap:wrap;
+}
+.vswitch button{
+  appearance:none; font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+  display:flex; align-items:center; gap:7px;
+  color:var(--ink-2); background:var(--surface-2); border:1px solid var(--rule);
+  padding:7px 13px;
+}
+.vswitch button:first-of-type{border-radius:6px 0 0 6px}
+.vswitch button:last-of-type{border-radius:0 6px 6px 0; border-left:0}
+.vswitch button:hover{color:var(--ink); border-color:var(--rule-2)}
+.vswitch button[aria-pressed="true"]{
+  background:var(--accent); border-color:var(--accent); color:#fff;
+}
+:root[data-theme="dark"] .vswitch button[aria-pressed="true"]{color:#0b0e13}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .vswitch button[aria-pressed="true"]{color:#0b0e13}
+}
+.vswitch .n{
+  font-variant-numeric:tabular-nums; font-size:11.5px; font-weight:700;
+  background:var(--surface-3); color:var(--ink-2); border-radius:10px; padding:1px 7px;
+}
+.vswitch button[aria-pressed="true"] .n{background:rgba(255,255,255,.22); color:inherit}
+.vswitch > .note{margin-left:14px; max-width:46ch}
+@media (max-width:620px){.vswitch > .note{margin:7px 0 0; flex-basis:100%}}
+
+/* The backlog, carried in the header so it is visible from every page. */
+.inbtn{
+  appearance:none; font:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  display:flex; align-items:center; gap:6px; white-space:nowrap;
+  color:var(--alert-ink); background:var(--alert-bg); border:1px solid var(--alert-border);
+  padding:4px 9px; border-radius:20px;
+}
+.inbtn:hover{background:var(--alert-hover)}
+.inbtn .n{font-variant-numeric:tabular-nums; font-weight:700}
+
+/* The decision, in the row. Four stances and a refusal: one press each.
+   A fixed two-by-two grid rather than a wrapping row: the buttons have
+   different widths, so flex-wrap packed them 2-1-1-1 and the column looked
+   like a mistake. */
+.decide{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px; max-width:190px}
+.decide .no{grid-column:1 / -1}
+.dbtn{
+  appearance:none; font:inherit; font-size:11.5px; font-weight:600; cursor:pointer;
+  color:var(--ink-2); background:var(--surface); border:1px solid var(--rule);
+  padding:3px 8px; border-radius:4px; white-space:nowrap;
+}
+.dbtn:hover{border-color:var(--accent-line); color:var(--accent); background:var(--accent-soft)}
+.dbtn.no{color:var(--muted)}
+.dbtn.no:hover{border-color:var(--alert-border); color:var(--alert-ink); background:var(--alert-bg)}
+.dbtn:disabled{opacity:.5; cursor:default}
+
+/* Where a record stands, at the top of the drawer. */
+.trow{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:13px;
+  padding-bottom:13px; border-bottom:1px solid var(--rule);
+}
+.trow .st{font-size:12.5px; font-weight:600; color:var(--muted); margin-right:auto}
+.trow .st.on{color:var(--ink-2)}
+
+/* What pressing the button is about to do, before it is pressed. */
+.willdo{margin:0; padding-left:18px; font-size:12.5px; color:var(--ink-2); line-height:1.6}
+.willdo li{margin-bottom:3px}
+.sweepbox{
+  display:flex; gap:9px; align-items:flex-start; margin-top:11px; padding:11px;
+  background:var(--surface-2); border:1px solid var(--rule); border-radius:6px;
+  font-size:12.5px; cursor:pointer;
+}
+.sweepbox input{margin-top:2px; flex:none}
+
 /* The one destructive control in the drawer.
    It borrows the alert tokens rather than inventing a second red: in this
    interface red means "this needs attention now", and deleting a record is the

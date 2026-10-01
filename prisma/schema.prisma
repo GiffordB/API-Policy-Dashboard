@@ -28,6 +28,21 @@ enum Position {
   MONITOR
 }
 
+/// Where a record stands with a person.
+///
+/// Everything a collector finds arrives in the INBOX. It stays there until
+/// somebody decides, and the decision is the position: choosing Support,
+/// Oppose, Amend or Monitor tracks it. Stopping tracking sends it back to the
+/// inbox, undecided again.
+///
+/// There is no DISMISSED state, unlike the state legislative tracker this
+/// follows: "do not track" deletes the record outright and remembers the
+/// docket on the watchlist, which costs a row rather than a record.
+enum Triage {
+  INBOX
+  TRACKED
+}
+
 enum Track {
   FEDERAL   // rulemaking
   CONGRESS
@@ -129,6 +144,10 @@ model Item {
   ownerId    String?
   owner      Person?    @relation("owner", fields: [ownerId], references: [id])
 
+  triage     Triage     @default(INBOX)
+  triagedBy  String?                       // who decided
+  triagedAt  DateTime?
+
   priority   Priority   @default(MEDIUM)
   // false while an agent's guess is still waiting for a human to confirm it
   priorityConfirmed Boolean @default(false)
@@ -169,6 +188,7 @@ model Item {
   @@index([track])
   @@index([commentDueAt])
   @@index([priority])
+  @@index([triage, commentDueAt])
 }
 
 // What a collector agent noticed. One row per detected change.

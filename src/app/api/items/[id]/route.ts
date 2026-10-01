@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { Position, Priority, WatchKind } from "@prisma/client";
+import { Position, Priority, Triage, WatchKind } from "@prisma/client";
 
 const Body = z.object({
   actor: z.string().min(1),
@@ -10,6 +10,7 @@ const Body = z.object({
   ownerId: z.string().nullable().optional(),
   position: z.nativeEnum(Position).optional(),
   positionNote: z.string().max(2000).nullable().optional(),
+  triage: z.nativeEnum(Triage).optional(),
 });
 
 const LABEL: Record<string, string> = {
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params;
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { actor, priority, divisionId, ownerId, position, positionNote } = parsed.data;
+  const { actor, priority, divisionId, ownerId, position, positionNote, triage } = parsed.data;
 
   const item = await prisma.item.findUnique({ where: { id }, include: { owner: true, division: true } });
   if (!item) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -76,6 +77,51 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     data.position = position;
     data.positionSetBy = actor;
     data.positionSetAt = new Date();
+  }
+
+  /*
+   * The position is the decision.
+   *
+   * Taken from the state legislative tracker: choosing a stance is what moves
+   * a record out of the inbox. Making the two separate steps would mean every
+   * triage took two clicks and a record could sit tracked with nobody having
+   * said what to do about it.
+   *
+   * Only a real position tracks it. Choosing "no position" says the opposite,
+   * so it is never the thing that files a record as reviewed.
+   */
+  const impliedTrack =
+    position && position !== Position.PENDING && item.triage === Triage.INBOX;
+  const wantTriage = triage ?? (impliedTrack ? Triage.TRACKED : undefined);
+
+  if (wantTriage && wantTriage !== item.triage) {
+    audits.push({
+      field: "tracking",
+      fromValue: item.triage === Triage.INBOX ? "in the inbox" : "tracked",
+      toValue: wantTriage === Triage.TRACKED ? "tracked" : "back to the inbox, undecided",
+    });
+    data.triage = wantTriage;
+    data.triagedBy = actor;
+    data.triagedAt = new Date();
+
+    /*
+     * Going back to the inbox clears the position.
+     *
+     * Otherwise the record sits in a queue of undecided things carrying last
+     * month's decision, and — worse — the stance buttons on its row stop
+     * working: tracking is implied by the position CHANGING, so pressing the
+     * stance it already holds would do nothing at all.
+     */
+    if (wantTriage === Triage.INBOX && !position && item.position !== Position.PENDING) {
+      audits.push({
+        field: "position",
+        fromValue: POSITION_LABEL[item.position],
+        toValue: "cleared — back in the inbox, undecided",
+      });
+      data.position = Position.PENDING;
+      data.positionSetBy = null;
+      data.positionSetAt = null;
+    }
   }
   if (positionNote !== undefined && positionNote !== item.positionNote) {
     audits.push({ field: "position reason", fromValue: item.positionNote, toValue: positionNote });

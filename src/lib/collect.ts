@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Priority, SourceKind, Track, WatchKind } from "@prisma/client";
 import {
-  fetchRecent, fetchByDocket, search, stageFor, docketFor, agencyShortName, isNoise,
+  fetchRecent, fetchByDocket, search, stageFor, docketFor, agencyShortName, isNoise, typeOf,
   DEFAULT_AGENCIES, DEFAULT_EXCLUDES, type FrDoc,
 } from "@/lib/sources/federal-register";
 import { inferDivision, inferTopics, guessPriority } from "@/lib/routing";
@@ -146,7 +146,7 @@ async function ingest(doc: FrDoc, watchId: string | null, tally: Tally, blocked:
       data: {
         itemId: item.id, source: SourceKind.FEDERAL_REGISTER,
         summary: confident
-          ? `New ${doc.type === "RULE" ? "final rule" : "proposal"} from ${agency}.`
+          ? `New ${typeOf(doc) === "RULE" ? "final rule" : typeOf(doc) === "PRORULE" ? "proposal" : "notice"} from ${agency}.`
           : `New ${agency} document. The division is a guess — please confirm it.`,
         detail: snap as object,
       },
@@ -180,6 +180,28 @@ async function ingest(doc: FrDoc, watchId: string | null, tally: Tally, blocked:
       lastSnapshot: snap as object, lastSeenAt: new Date(),
     },
   });
+}
+
+/**
+ * Reads one docket from the Federal Register now, and stores what it says.
+ *
+ * This is what makes adding a record by hand more than a typed guess: the
+ * fields a person filled in are replaced by the agency's own — the real stage,
+ * the real comment deadline, the abstract, the citation — and the same docket
+ * is read again on every run from then on.
+ *
+ * It writes through the same ingest as a scheduled run, so a record added by
+ * hand and a record found by a sweep are stored identically. Only the newest
+ * document in the docket is stored, because the docket is the key: that is how
+ * a pinned docket behaves in a scheduled run too.
+ */
+export async function collectDocket(docketId: string, watchId: string | null = null) {
+  const tally: Tally = { created: 0, changed: 0, skipped: 0, blocked: 0 };
+  const docs = await fetchByDocket(docketId, 5);
+  if (!docs.length) return { ok: true, found: 0, ...tally };
+  const blocked = await blockedDockets();
+  await ingest(docs[0], watchId, tally, blocked);
+  return { ok: true, found: docs.length, ...tally };
 }
 
 /**

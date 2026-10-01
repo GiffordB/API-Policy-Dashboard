@@ -24,6 +24,10 @@ export const DEFAULT_AGENCIES = [
   "occupational-safety-and-health-administration",
   "industry-and-security-bureau",
   "commodity-futures-trading-commission",
+  // OMB, which is OIRA's parent. The Federal Register has no OIRA agency: a
+  // rule under E.O. 12866 review has not been published yet, so the register
+  // cannot show it. See the note on the coverage page.
+  "management-and-budget-office",
 ] as const;
 
 /** Document types worth tracking. SCHEDULE and PRESDOCU are noise for this team. */
@@ -117,11 +121,31 @@ export async function search(term: string, limit = 20): Promise<FrDoc[]> {
   return json.results ?? [];
 }
 
+/**
+ * What kind of document this is, as one of three codes.
+ *
+ * The API takes the codes RULE, PRORULE and NOTICE in a query but prints the
+ * labels "Rule", "Proposed Rule" and "Notice" in a result. Comparing a result
+ * against the codes therefore never matched, silently: every document fell
+ * through to the Notice branch of stageFor, so no record was ever staged Final
+ * or Proposed, and the rule in isNoise that drops a notice with no comment
+ * deadline never fired at all.
+ *
+ * Both spellings are accepted here so neither reading can break it again.
+ */
+export function typeOf(doc: FrDoc): "RULE" | "PRORULE" | "NOTICE" {
+  const t = (doc.type ?? "").toUpperCase();
+  if (t === "RULE") return "RULE";
+  if (t === "PRORULE" || t === "PROPOSED RULE") return "PRORULE";
+  return "NOTICE";
+}
+
 /** The stage a document puts an item into. */
 export function stageFor(doc: FrDoc): { stage: string; stageIndex: number } {
   const open = doc.comments_close_on && new Date(doc.comments_close_on) >= new Date();
-  if (doc.type === "RULE") return { stage: "Final", stageIndex: 4 };
-  if (doc.type === "PRORULE") return open
+  const kind = typeOf(doc);
+  if (kind === "RULE") return { stage: "Final", stageIndex: 4 };
+  if (kind === "PRORULE") return open
     ? { stage: "Comment open", stageIndex: 2 }
     : { stage: "Proposed", stageIndex: 1 };
   return open ? { stage: "Comment open", stageIndex: 2 } : { stage: "Notice", stageIndex: 1 };
@@ -180,6 +204,11 @@ export const DEFAULT_EXCLUDES = [
   /meeting of the/i,
   /\badvisory (committee|council)\b.*\bmeeting\b/i,
   /petitions? for reconsideration of action in rulemaking proceeding/i,
+  // Paperwork Reduction Act clearances. Sweeping OMB brings in every agency's
+  // form approvals, which is most of what OMB publishes and none of what a
+  // policy team acts on. Dropping these is what makes the OMB sweep useful
+  // rather than a second firehose.
+  /submission for omb review/i,
 ];
 /** Dockets from programmes this team does not work on. */
 const OFF_TOPIC_DOCKET = /^EPA-HQ-OPP-/i;            // pesticides
@@ -212,6 +241,38 @@ export function isNoise(doc: FrDoc, excludes: RegExp[] = DEFAULT_EXCLUDES): bool
   if ((doc.docket_ids ?? []).some((d) => OFF_TOPIC_DOCKET.test(d))) return true;
   // A notice with no comment period is almost never work for a policy team.
   // Rules and proposals are always kept, whether or not comments are open.
-  if (doc.type === "NOTICE" && !doc.comments_close_on) return true;
+  if (typeOf(doc) === "NOTICE" && !doc.comments_close_on) return true;
   return false;
+}
+
+/* ----------------------------------------------------------------- agencies */
+
+export type FrAgency = { id: number; name: string; shortName: string | null; slug: string };
+
+/**
+ * Every agency the Federal Register publishes under — 473 of them.
+ *
+ * The agency sweep is keyed on the slug, and a slug a person typed from memory
+ * is a watch that silently finds nothing for ever. So the picker reads the
+ * real list and the person chooses from it.
+ *
+ * Cached for the life of the server process: the list changes when an agency
+ * is created or renamed, which is not an hourly event.
+ */
+let agencyCache: { at: number; rows: FrAgency[] } | null = null;
+const AGENCY_TTL = 12 * 60 * 60 * 1000;
+
+export async function fetchAgencies(): Promise<FrAgency[]> {
+  if (agencyCache && Date.now() - agencyCache.at < AGENCY_TTL) return agencyCache.rows;
+  const res = await fetch("https://www.federalregister.gov/api/v1/agencies", {
+    headers: { accept: "application/json" }, cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Federal Register ${res.status}`);
+  const json = (await res.json()) as { id: number; name: string; short_name: string | null; slug: string | null }[];
+  const rows = json
+    .filter((a) => a.slug)
+    .map((a): FrAgency => ({ id: a.id, name: a.name, shortName: a.short_name, slug: a.slug as string }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  agencyCache = { at: Date.now(), rows };
+  return rows;
 }

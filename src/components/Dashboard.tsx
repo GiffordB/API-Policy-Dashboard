@@ -118,6 +118,15 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
   const [prio, setPrio] = useState("");
   const [topic, setTopic] = useState("All");
   const [query, setQuery] = useState("");
+  /**
+   * Inbox or tracking.
+   *
+   * Everything a collector finds waits in the inbox until somebody decides,
+   * and the decision is the position. Tracking is the default view because it
+   * is the day's work; the inbox is the pile that has to be got through, and
+   * its size is shown in the header so it cannot be ignored by not looking.
+   */
+  const [view, setView] = useState<"tracking" | "inbox">("tracking");
   const [showGhost, setShowGhost] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -129,8 +138,14 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
       const a = localStorage.getItem("pr_actor"); if (a) setActor(a);
       const o = localStorage.getItem("pr_owner"); if (o) setOwner(o);
       const r = localStorage.getItem("pr_prio"); if (r) setPrio(r);
+      const v = localStorage.getItem("pr_view"); if (v === "inbox") setView("inbox");
     } catch {}
   }, []);
+  const changeView = (v: "tracking" | "inbox") => {
+    setView(v);
+    setTopic("All");
+    try { localStorage.setItem("pr_view", v); } catch {}
+  };
   const changeOwner = (id: string) => {
     setOwner(id);
     try { localStorage.setItem("pr_owner", id); } catch {}
@@ -142,14 +157,24 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
   const changeActor = (n: string) => { setActor(n); try { localStorage.setItem("pr_actor", n); } catch {} };
 
   const live = (i: ItemDTO) => i.priority !== "NOT_RELEVANT";
+  const inView = useCallback(
+    (i: ItemDTO) => (view === "inbox" ? i.triage === "INBOX" : i.triage === "TRACKED"),
+    [view]
+  );
   const inDivision = useCallback((i: ItemDTO) => division === "all" || i.divisionId === division, [division]);
   const isOwner = useCallback((i: ItemDTO) => !owner || i.ownerId === owner, [owner]);
   const isPrio = useCallback((i: ItemDTO) => !prio || i.priority === prio, [prio]);
   // Asking for Not relevant means asking to see the ghosts.
   const ghostsVisible = showGhost || prio === "NOT_RELEVANT";
   const scoped = useMemo(
-    () => items.filter((i) => inDivision(i) && isOwner(i) && isPrio(i) && (live(i) || prio === "NOT_RELEVANT")),
-    [items, inDivision, isOwner, isPrio, prio]
+    () => items.filter((i) => inView(i) && inDivision(i) && isOwner(i) && isPrio(i) && (live(i) || prio === "NOT_RELEVANT")),
+    [items, inView, inDivision, isOwner, isPrio, prio]
+  );
+  /** The whole un-reviewed pile, every division and every track. */
+  const inboxTotal = useMemo(() => items.filter((i) => i.triage === "INBOX" && live(i)).length, [items]);
+  const inboxHere = useMemo(
+    () => items.filter((i) => i.triage === "INBOX" && live(i) && i.track === track).length,
+    [items, track]
   );
   const ownerName = owner ? people.find((p) => p.id === owner)?.name ?? null : null;
 
@@ -176,14 +201,17 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
         .sort(byRelevance);
     }
     return items
+      .filter(inView)
       .filter(inDivision)
       .filter(isOwner)
       .filter(isPrio)
       .filter((i) => ghostsVisible || live(i))
       .filter((i) => i.track === track)
       .filter((i) => topic === "All" || i.topics.includes(topic))
-      .sort(byRelevance);
-  }, [items, inDivision, isOwner, isPrio, ghostsVisible, track, topic, query]);
+      // The inbox is a queue, so the newest arrival is at the top. Tracking is
+      // work, so the closest deadline is at the top.
+      .sort(view === "inbox" ? (a, b) => b.foundAt.localeCompare(a.foundAt) : byRelevance);
+  }, [items, inView, inDivision, isOwner, isPrio, ghostsVisible, track, topic, query, view]);
 
   const openItem = openId ? items.find((i) => i.id === openId) ?? null : null;
 
@@ -207,6 +235,47 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
         body: JSON.stringify({ actor, ...body }),
       });
       if (!res.ok) alert((await res.json()).error ?? "That change did not save.");
+      router.refresh();
+    } finally { setBusy(false); }
+  };
+
+  /**
+   * Read one record's docket from the Federal Register now.
+   *
+   * The hourly run is right for a sweep and useless to somebody looking at one
+   * record wondering whether the deadline on screen is still the deadline.
+   */
+  const check = async (id: string) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${id}/refresh`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) { alert(json.error ?? "That could not be checked."); return; }
+      alert(json.found === 0
+        ? "The Federal Register has nothing under that docket."
+        : json.changed
+          ? "Read from the Federal Register — something had moved. The record is updated."
+          : "Read from the Federal Register — nothing has changed.");
+      router.refresh();
+    } finally { setBusy(false); }
+  };
+
+  /** Clear the inbox in one pass: everything shown becomes tracked, as Monitor. */
+  const bulkMonitor = async (ids: string[]) => {
+    if (!ids.length) return;
+    const n = ids.length;
+    if (!confirm(
+      `Track ${n} record${n === 1 ? "" : "s"} as Monitor?\n\n` +
+      `They move out of the inbox and into tracking, with the position Monitor ` +
+      `and your name on each decision. You can change any of them afterwards.`
+    )) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/items/bulk", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actor, ids, position: "MONITOR" }),
+      });
+      if (!res.ok) { alert((await res.json()).error ?? "That batch did not save."); return; }
       router.refresh();
     } finally { setBusy(false); }
   };
@@ -251,6 +320,11 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
       const to = tracks.find((t) => t.track === i.track);
       if (to) { router.push(`/${to.slug}?open=${encodeURIComponent(i.docket)}`); return; }
     }
+    // The item may be on the other side of the inbox line as well as behind a
+    // filter. Every narrowing that would hide it has to give way, or the click
+    // opens nothing and looks broken.
+    const want = i.triage === "INBOX" ? "inbox" : "tracking";
+    if (view !== want) changeView(want);
     if (division !== "all" && division !== i.divisionId) setDivision(i.divisionId);
     if (owner && i.ownerId !== owner) changeOwner("");
     setTopic("All"); setQuery("");
@@ -271,7 +345,8 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
   return (
     <>
       <Header actor={actor} people={people} onActor={changeActor} query={query} onQuery={setQuery}
-              busy={busy} hits={searching ? visible.length : null} />
+              busy={busy} hits={searching ? visible.length : null}
+              inbox={inboxTotal} onInbox={() => { changeView("inbox"); setQuery(""); }} />
 
       <div className="wrap">
         {/* A search is a question asked at the top of the page. Everything
@@ -279,6 +354,9 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
             appear where you are looking instead of a thousand pixels below. */}
         {!searching && (
           <>
+            <ViewSwitch view={view} onView={changeView}
+                        tracked={items.filter((i) => i.triage === "TRACKED" && live(i) && i.track === track).length}
+                        inbox={inboxHere} trackLabel={trackLabel} />
             <UrgentBand list={urgent} DIV={DIV} onJump={jump} nextOpen={deadlines[0]?.days ?? null} />
             {/* The filters sit above the deadline chart on purpose: the chart
                 obeys them, so choosing a department or an owner has to come
@@ -290,16 +368,35 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
               onDivision={(id) => { setDivision(id); setTopic("All"); }}
               onOwner={changeOwner} onPrio={changePrio}
             />
-            <DeadlinePanel list={deadlines} DIV={DIV} onJump={jump} />
-            <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
+            {/* The deadline chart and the stat band describe the work in hand.
+                In the inbox nothing has been decided, so they would be
+                answering a question nobody asked; the queue gets the room. */}
+            {view === "tracking" ? (
+              <>
+                <DeadlinePanel list={deadlines} DIV={DIV} onJump={jump} />
+                <StatBand scoped={scoped} items={items} division={division} divisions={divisions} />
+              </>
+            ) : (
+              <InboxBand shown={visible.length} here={inboxHere} busy={busy}
+                         onMonitorAll={() => bulkMonitor(visible.map((i) => i.id))} />
+            )}
           </>
         )}
 
         <div className="main" style={searching ? { marginTop: 18, gridTemplateColumns: "minmax(0,1fr)" } : undefined}>
           <section className="panel" aria-label="Tracked items">
             <div className="panel-hd" style={{ borderBottom: 0, paddingBottom: 2 }}>
-              <h2>{searching ? "Search results" : ownerName ? `${ownerName}'s ${trackLabel.toLowerCase()} items` : trackLabel}</h2>
-              {!searching && !ownerName && <span className="count">{trackBlurb}</span>}
+              <h2>
+                {searching ? "Search results"
+                  : view === "inbox" ? `${trackLabel} inbox`
+                  : ownerName ? `${ownerName}'s ${trackLabel.toLowerCase()} items`
+                  : trackLabel}
+              </h2>
+              {!searching && !ownerName && (
+                <span className="count">
+                  {view === "inbox" ? "Newest first — nobody has decided on these yet" : trackBlurb}
+                </span>
+              )}
               {!searching && ownerName && (
                 <span className="count">{scoped.length} across every division</span>
               )}
@@ -322,7 +419,7 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
             ) : (
             <div className="tabs">
               {tracks.map((t) => {
-                const n = items.filter((i) => live(i) && isOwner(i) && i.track === t.track).length;
+                const n = items.filter((i) => live(i) && inView(i) && isOwner(i) && i.track === t.track).length;
                 return (
                   <Link key={t.slug} href={`/${t.slug}`} className="tab"
                         aria-selected={t.track === track} style={{ textDecoration: "none" }}>
@@ -356,7 +453,8 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
                 <thead>
                   <tr>
                     <th scope="col">Item</th><th scope="col">Source</th><th scope="col">Stage</th>
-                    <th scope="col">Next date</th><th scope="col">Priority</th><th scope="col">Owner</th>
+                    <th scope="col">Next date</th><th scope="col">Priority</th>
+                    <th scope="col">{view === "inbox" ? "Decide" : "Owner"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -366,7 +464,9 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
                         ? `Nothing you track matches “${query}”. It may not be tracked yet.`
                         : topic !== "All"
                           ? `Nothing in ${DIV[division]?.name ?? "this view"} is tagged ${topic}.`
-                          : "Nothing here."}
+                          : view === "inbox"
+                            ? "The inbox is empty. Everything the collectors have found has been decided on."
+                            : "Nothing tracked here yet. The inbox is where new arrivals wait."}
                       <button className="addbtn" style={{ marginLeft: 8 }} onClick={() => setAdding(true)}>
                         {searching ? `Search the Federal Register for “${query}”` : "+ Track a new item"}
                       </button>
@@ -420,8 +520,30 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
                           }} />
                         </td>
                         <td className="pos">
-                          {it.ownerName ?? <span style={{ color: "var(--critical)", fontWeight: 600 }}>Owner needed</span>}
-                          <div style={{ marginTop: 5 }}><PositionPill item={it} /></div>
+                          {view === "inbox" ? (
+                            /* The position is the decision, so the four stances
+                               are the buttons. One press tracks the record and
+                               takes it off this list. */
+                            <div className="decide" onClick={(e) => e.stopPropagation()}>
+                              {POSITIONS.filter((p) => p.id !== "PENDING").map((p) => (
+                                <button key={p.id} className="dbtn" disabled={busy}
+                                        title={`Track it, position ${p.nm}`}
+                                        onClick={() => patch(it.id, { position: p.id })}>
+                                  {p.nm}
+                                </button>
+                              ))}
+                              <button className="dbtn no" disabled={busy}
+                                      title="Remove it from the system and stop collecting it"
+                                      onClick={() => remove(it.id, "cleared from the inbox")}>
+                                Do not track
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              {it.ownerName ?? <span style={{ color: "var(--critical)", fontWeight: 600 }}>Owner needed</span>}
+                              <div style={{ marginTop: 5 }}><PositionPill item={it} /></div>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );
@@ -463,7 +585,8 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
         <Drawer item={openItem} DIV={DIV} divisions={divisions} people={people}
                 audits={audits.filter((a) => a.itemId === openItem.id)}
                 onClose={() => setOpenId(null)} onPatch={(b) => patch(openItem.id, b)}
-                onRemove={(reason) => remove(openItem.id, reason)} busy={busy} />
+                onRemove={(reason) => remove(openItem.id, reason)}
+                onCheck={() => check(openItem.id)} busy={busy} />
       )}
 
       {adding && (
@@ -479,7 +602,65 @@ export default function Dashboard({ data, track, trackLabel, trackBlurb, tracks 
 /* pieces                                                             */
 /* ------------------------------------------------------------------ */
 
-function Header({ actor, people, onActor, query, onQuery, busy, hits }: {
+/**
+ * Inbox or tracking, with the size of each.
+ *
+ * The counts are on the buttons because the choice is really "do I work, or do
+ * I clear the pile", and that is a question about how big the pile is.
+ */
+function ViewSwitch({ view, onView, tracked, inbox, trackLabel }: {
+  view: "tracking" | "inbox";
+  onView: (v: "tracking" | "inbox") => void;
+  tracked: number; inbox: number; trackLabel: string;
+}) {
+  return (
+    <div className="vswitch" role="group" aria-label={`${trackLabel}: inbox or tracking`}>
+      <button aria-pressed={view === "tracking"} onClick={() => onView("tracking")}>
+        Tracking<span className="n">{tracked}</span>
+      </button>
+      <button aria-pressed={view === "inbox"} onClick={() => onView("inbox")}>
+        Inbox<span className="n">{inbox}</span>
+      </button>
+      <span className="note">
+        {view === "tracking"
+          ? "Records somebody has decided on. The position is the decision."
+          : "Found by the collectors, waiting for a decision. Choose a position to track one."}
+      </span>
+    </div>
+  );
+}
+
+/** The head of the queue: how much is left, and the one tool for a first pass. */
+function InboxBand({ shown, here, busy, onMonitorAll }: {
+  shown: number; here: number; busy: boolean; onMonitorAll: () => void;
+}) {
+  return (
+    <section className="panel" style={{ marginTop: 18 }} aria-label="Inbox">
+      <div className="panel-hd">
+        <h2>Waiting for a decision</h2>
+        <span className="count">{here} on this page</span>
+        {shown > 1 && (
+          <button className="addbtn spacer" disabled={busy} onClick={onMonitorAll}>
+            Track all {shown} shown as Monitor
+          </button>
+        )}
+      </div>
+      <div className="cbody">
+        <p className="note" style={{ margin: 0, maxWidth: "78ch" }}>
+          Every record a collector finds waits here. Choosing <b>Support</b>, <b>Oppose</b>,{" "}
+          <b>Amend</b> or <b>Monitor</b> on a row tracks it with that position and takes it off this
+          list. <b>Do not track</b> removes it from the system and stops the collectors finding it
+          again. Nothing here appears on the deadline chart or in the department totals until it is
+          tracked — except an open comment window closing inside two days, which is shown above
+          whether or not anybody has looked at it yet.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function Header({ actor, people, onActor, query, onQuery, busy, hits, inbox, onInbox }: {
+  inbox: number; onInbox: () => void;
   actor: string; people: PersonDTO[]; onActor: (n: string) => void;
   query: string; onQuery: (q: string) => void; busy: boolean;
   /** Result count, shown beside the box so a search answers where you typed it. */
@@ -508,6 +689,13 @@ function Header({ actor, people, onActor, query, onQuery, busy, hits }: {
             </span>
           )}
         </label>
+        {/* The size of the un-reviewed pile, from every page. A backlog nobody
+            can see is a backlog that grows. */}
+        {inbox > 0 && (
+          <button className="inbtn" onClick={onInbox} title="Records nobody has decided on yet">
+            Inbox<span className="n">{inbox}</span>
+          </button>
+        )}
         <Link href="/coverage" className="chip" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
           What we watch
         </Link>
@@ -553,6 +741,10 @@ function UrgentBand({ list, DIV, onJump, nextOpen }: {
               <span className="dvtag"><i style={{ background: d?.colorVar }} />{d?.name}</span>
               <span className="h">{it.agency} — {it.title}</span>
               <span className="m">
+                {/* An un-reviewed rule closing in two days is the most urgent
+                    thing in the building, so the band shows inbox records as
+                    well — and says that nobody has decided on them. */}
+                {it.triage === "INBOX" && <span className="nodraft">not reviewed</span>}
                 <PriorityChip item={it} />
                 <PositionPill item={it} />
                 <span>{it.nextLabel}</span>
@@ -932,7 +1124,7 @@ function PriorityMenu({ at, current, onPick, onClose }: {
 /* drawer                                                             */
 /* ------------------------------------------------------------------ */
 
-function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, onRemove, busy }: {
+function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, onRemove, onCheck, busy }: {
   item: ItemDTO;
   DIV: Record<string, { name: string; colorVar: string }>;
   divisions: { id: string; name: string }[];
@@ -941,6 +1133,7 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, onRemo
   onClose: () => void;
   onPatch: (body: Record<string, unknown>) => void;
   onRemove: (reason: string) => void;
+  onCheck: () => void;
   busy: boolean;
 }) {
   const d = DIV[item.divisionId];
@@ -975,6 +1168,38 @@ function Drawer({ item, DIV, divisions, people, audits, onClose, onPatch, onRemo
         <div className="dbody">
           <div className="dsec">
             <div className="dt">Tracking</div>
+            {/* Where this record stands, and the one control that moves it.
+                Choosing a position below also tracks it — this is here for the
+                record somebody wants tracked before they have a view on it,
+                and for taking one back out. */}
+            <div className="trow">
+              {item.triage === "INBOX" ? (
+                <>
+                  <span className="st">In the inbox — nobody has decided yet</span>
+                  <button className="btn pri" disabled={busy} onClick={() => onPatch({ triage: "TRACKED" })}>
+                    Track it
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="st on">
+                    Tracked
+                    {item.triagedBy ? ` · ${item.triagedBy}` : ""}
+                    {item.triagedAt ? ` · ${fmtDate(item.triagedAt)}` : ""}
+                  </span>
+                  <button className="btn" disabled={busy} onClick={() => onPatch({ triage: "INBOX" })}
+                          title="Put it back in the inbox, undecided. The record and its history stay.">
+                    Stop tracking
+                  </button>
+                </>
+              )}
+              {item.track === "FEDERAL" && (
+                <button className="btn" disabled={busy} onClick={onCheck}
+                        title="Read this docket from the Federal Register now">
+                  Check now
+                </button>
+              )}
+            </div>
             <div className="grid3">
               <div className="field">
                 <label htmlFor="fPri">Priority</label>
@@ -1168,6 +1393,8 @@ type LookupHit = {
   suggestedDivision: string; topics: string[];
   /** Somebody removed this docket with "do not track". Adding it lifts that. */
   blocked: boolean;
+  /** The Federal Register's own key for the office that wrote it. */
+  agencySlug: string | null; agencyName: string | null; agencySwept: boolean;
 };
 
 function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }: {
@@ -1187,6 +1414,16 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
     commentDueAt: "", divisionId: divisions[0]?.id ?? "up", ownerId: "",
     priority: "MEDIUM", position: "PENDING", topics: "", sourceUrl: "",
   });
+  /**
+   * The agency behind the chosen document, and whether to sweep it.
+   *
+   * Tracking one rule tells the collectors to follow that docket. Sweeping the
+   * agency is a bigger decision — it brings in everything that office
+   * publishes — so it is offered, with its consequence written next to it,
+   * rather than done quietly.
+   */
+  const [agency, setAgency] = useState<{ slug: string; name: string; swept: boolean } | null>(null);
+  const [sweep, setSweep] = useState(true);
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const roster = people.filter((p) => p.divisionId === form.divisionId);
 
@@ -1230,6 +1467,9 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
       stage: h.stage, commentDueAt: h.commentDueAt ?? "",
       divisionId: h.suggestedDivision, topics: h.topics.join(", "), sourceUrl: h.sourceUrl,
     }));
+    setAgency(h.agencySlug && h.agencyName
+      ? { slug: h.agencySlug, name: h.agencyName, swept: h.agencySwept }
+      : null);
     setHits(null);
     setMsg(h.blocked
       ? "Loaded. This docket was set to do not track — adding it lifts that and starts a fresh record."
@@ -1254,10 +1494,20 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
           priority: form.priority, position: form.position,
           topics: form.topics.split(",").map((t) => t.trim()).filter(Boolean),
           sourceUrl: form.sourceUrl || undefined,
+          agencySlug: agency?.slug,
+          agencyName: agency?.name,
+          sweepAgency: Boolean(agency && !agency.swept && sweep),
         }),
       });
       const json = await res.json();
       if (!res.ok) { setErr(json.error ?? "That did not save."); return; }
+      // What the add actually set in motion. A record saved but not being
+      // collected looks identical to one that is, until it goes stale.
+      const started = (json.started ?? []) as string[];
+      const failed = (json.failed ?? []) as string[];
+      if (failed.length)
+        alert(`Saved, and ${started.join(", ")}.\n\nBut: ${failed.join("; ")}. ` +
+              `The record is tracked either way; the hourly run will pick it up.`);
       onAdded(json.id);
     } finally { setSaving(false); }
   };
@@ -1366,6 +1616,42 @@ function AddDialog({ divisions, people, actor, seed, tracks, onClose, onAdded }:
                 {POSITIONS.map((p) => <option key={p.id} value={p.id}>{p.nm}</option>)}
               </select>
             </div>
+          </div>
+
+          <div className="dsec">
+            <div className="dt">What tracking it will do</div>
+            <ul className="willdo">
+              <li>Pin <b>{form.docket || "the docket"}</b>, so every collector run reads it from now on.</li>
+              {form.track === "FEDERAL" && (
+                <li>Read it from the Federal Register straight away, so the stage and the
+                    comment deadline are the agency&rsquo;s own and not what was typed here.</li>
+              )}
+              {form.track !== "FEDERAL" && (
+                <li>Wait for that track&rsquo;s own collector — only the Federal Register can be
+                    read on demand.</li>
+              )}
+              <li>File it as tracked, with your name on the decision.</li>
+            </ul>
+            {agency && (
+              agency.swept ? (
+                <p className="note" style={{ margin: "9px 0 0" }}>
+                  Everything <b>{agency.name}</b> publishes is already swept, so the next rule from
+                  that office will arrive on its own.
+                </p>
+              ) : (
+                <label className="sweepbox">
+                  <input type="checkbox" checked={sweep} onChange={(e) => setSweep(e.target.checked)} />
+                  <span>
+                    <b>Also sweep everything {agency.name} publishes.</b>
+                    <span className="note" style={{ display: "block", marginTop: 3 }}>
+                      New rules from that office then arrive on their own, into the inbox, instead of
+                      waiting to be noticed. Expect volume: a department publishes hundreds of
+                      notices a year. Removable any time from the coverage page.
+                    </span>
+                  </span>
+                </label>
+              )
+            )}
           </div>
 
           <div className="dsec">

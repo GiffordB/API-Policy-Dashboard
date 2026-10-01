@@ -10,11 +10,15 @@ export type ItemDTO = {
   /** Derived from the date on every read, never from a stored flag. */
   isOpen: boolean;
   divisionId: string; ownerId: string | null; ownerName: string | null;
+  /** INBOX until somebody decides. The position is the decision. */
+  triage: string; triagedBy: string | null; triagedAt: string | null;
   priority: string; priorityConfirmed: boolean;
   position: string; positionNote: string | null;
   positionSetBy: string | null; positionSetAt: string | null;
   topics: string[]; standards: string[]; draftState: string | null;
   sourceUrl: string | null; frCitation: string | null; abstract: string | null;
+  /** When the collector first stored it — the inbox orders by this. */
+  foundAt: string;
   commentCount: number | null;
   recentCommenters: { submitter: string; postedDate: string; title: string }[] | null;
   lastFinding: { summary: string; source: string; foundAt: string } | null;
@@ -71,12 +75,15 @@ export async function loadDashboard() {
       days: daysUntil(i.commentDueAt),
       isOpen: i.commentDueAt !== null && i.commentDueAt.getTime() >= Date.now(),
       divisionId: i.divisionId, ownerId: i.ownerId, ownerName: i.owner?.name ?? null,
+      triage: i.triage, triagedBy: i.triagedBy,
+      triagedAt: i.triagedAt?.toISOString() ?? null,
       priority: i.priority, priorityConfirmed: i.priorityConfirmed,
       position: i.position, positionNote: i.positionNote,
       positionSetBy: i.positionSetBy,
       positionSetAt: i.positionSetAt?.toISOString() ?? null,
       topics: i.topics, standards: i.standards, draftState: i.draftState,
       sourceUrl: i.sourceUrl, frCitation: i.frCitation, abstract: i.abstract,
+      foundAt: i.createdAt.toISOString(),
       commentCount: i.commentCount,
       recentCommenters: (i.recentCommenters as ItemDTO["recentCommenters"]) ?? null,
       lastFinding: i.findings[0]

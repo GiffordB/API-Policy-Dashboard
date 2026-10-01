@@ -15,6 +15,28 @@ const AGENCY_LABEL: Record<string, string> = {
   "occupational-safety-and-health-administration": "OSHA",
   "industry-and-security-bureau": "Commerce / BIS",
   "commodity-futures-trading-commission": "CFTC",
+  "management-and-budget-office": "OMB / OIRA",
+};
+
+/**
+ * Why OIRA is on the list under OMB's name.
+ *
+ * OIRA reviews significant rules before they are published, which is the point
+ * in the process a trade association most wants to see. The Federal Register
+ * cannot show it: a rule at OIRA has not been published, so it is not in the
+ * register at all. Those reviews are listed on reginfo.gov, which serves web
+ * pages and no API.
+ *
+ * So this entry sweeps what OMB itself publishes in the register, which is
+ * real but is not the OIRA review queue. The coverage page says so, because a
+ * watch that looks like it answers a question it cannot answer is worse than
+ * no watch.
+ */
+const AGENCY_NOTE: Record<string, string> = {
+  "management-and-budget-office":
+    "What OMB publishes in the Federal Register. This is NOT the OIRA review queue — " +
+    "a rule under OIRA review has not been published yet, so the register cannot show it. " +
+    "Those are listed on reginfo.gov, which has no API.",
 };
 
 const AGENCY_DIVISION: Record<string, string> = {
@@ -42,6 +64,7 @@ const EXCLUDE_LABEL: [RegExp, string, string][] = [
   [/meeting of the/i, "Meeting announcements", "Advisory committee meeting dates."],
   [/advisory \(committee\|council/i, "Advisory committee notices", "Advisory body housekeeping."],
   [/petitions? for reconsideration/i, "Reconsideration petitions", "Procedural filings in other agencies' proceedings."],
+  [/submission for omb review/i, "OMB paperwork clearances", "Every agency's form approvals, which is most of what OMB publishes. Switching this off turns the OMB sweep into a firehose of survey forms."],
 ];
 
 export function defaultWatches() {
@@ -49,7 +72,7 @@ export function defaultWatches() {
     kind: WatchKind.AGENCY,
     value: slug,
     label: AGENCY_LABEL[slug] ?? slug,
-    note: "Every rule, proposal and notice this agency publishes is swept.",
+    note: AGENCY_NOTE[slug] ?? "Every rule, proposal and notice this agency publishes is swept.",
     source: SourceKind.FEDERAL_REGISTER,
     divisionId: AGENCY_DIVISION[slug] ?? null,
   }));
