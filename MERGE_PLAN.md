@@ -8,9 +8,8 @@ Written in ASD-STE100 (Simplified Technical English). Date: 2026-10-05.
 
 The user confirmed these two projects on 2026-10-05.
 
-**Where this file is.** The plan recommends Project A as the base. This session
-can push only to `claude/fervent-ptolemy-uz80na` in Project B, so the file is
-here for review. After approval, step 0 moves it to Project A.
+**Where this file is.** In Project A, the base. A copy for review is on the
+branch `claude/fervent-ptolemy-uz80na` in Project B.
 
 ---
 
@@ -20,7 +19,7 @@ here for review. After approval, step 0 moves it to Project A.
 
 | | Project A — State Tracker | Project B — Policy Radar |
 |---|---|---|
-| Purpose | State bills, state agency rules, local ordinances for the 8 regional teams | Federal rulemaking and Congress for the 5 policy divisions (HQ) |
+| Purpose | State bills, state agency rules, local ordinances for the 8 regional teams | Federal rulemaking (and Congress, not carried over) for the 5 policy divisions (HQ) |
 | Framework | Next.js 16.3, React 19.3, TypeScript 5.9 | Next.js 16.3, React 19.0, TypeScript 5.7 |
 | ORM | Prisma 6.19 | Prisma 6.1 |
 | Database | PostgreSQL on **Neon** (pooled URL at run time, direct URL for migrations) | PostgreSQL on **Render** |
@@ -77,10 +76,10 @@ of the jobs easy.
 | `ANTHROPIC_API_KEY` | yes | yes | |
 | `CLAUDE_MODEL`, `PAGE_MODEL`, `SUMMARY_MODEL`, `NOISE_BELOW` | yes | — | |
 | `RESEND_API_KEY`, `ALERT_FROM` | yes | — | |
-| `DATA_GOV_API_KEY` | — | yes | Congress.gov, Regulations.gov |
-| `COURTLISTENER_TOKEN` | — | Vercel only | Not read by the code |
+| `DATA_GOV_API_KEY` | — | yes | Regulations.gov (Congress.gov is not carried over) |
+| `COURTLISTENER_TOKEN` | — | Vercel only | Not read by the code. Drop |
 | `COLLECT_DAYS`, `CLASSIFY_AFTER_COLLECT`, `CLASSIFY_CAP` | — | Render job | |
-| `STATES_ENABLED`, `STATES_HOUR`, `STATES_DAYS` | — | Render job | Drop after the merge: A owns states |
+| `STATES_ENABLED`, `STATES_HOUR`, `STATES_DAYS` | — | Render job | Drop: state work is not carried over |
 | `ROSTER_CSV` | — | yes | |
 | `OPENSTATES_PAUSE_MS`, `BACKFILL_DAYS`, `LOCAL_BACKFILL_DAYS`, `MIN_POP` | yes | — | Scripts and collectors |
 
@@ -170,22 +169,25 @@ These move into A as a new section. The B code is not lost; it is ported.
 
 ### 3.1 How B's features move into A
 
-New section **Federal** in A, with two new track tabs next to Legislation,
+**Scope (decided 2026-10-05): federal regulatory functions only.** Nothing
+state-level and no Congress or court work comes from B: no records, no
+collectors, no pages. Those rows stay only in the `radar_legacy` backup.
+
+New section **Federal** in A, with one new track tab next to Legislation,
 Regulation and Local:
 
 | New track (A `TRACKS`) | Record kinds | Date shown | From B |
 |---|---|---|---|
 | **Federal rules** (`/federal`) | `FEDERAL_RULE` | Comments due | `/regulatory` |
-| **Congress** (`/congress`) | `FEDERAL_BILL` | Last action | `/congress` |
 
 Do not use the path `/regulatory`: it is too close to A's `/regulation` (state
 rules). Old B paths redirect (section 3.6).
 
 | B feature | Where it goes in A |
 |---|---|
-| Federal Register, Congress.gov, Regulations.gov sources and collectors | `src/lib/sources/` and new `src/lib/collect-federal.ts`. They write `Record`, `Event`, `Scanner`, `Run` |
+| Federal Register and Regulations.gov sources and collectors (not Congress.gov, not Open States) | `src/lib/sources/` and new `src/lib/collect-federal.ts`. They write `Record`, `Event`, `Scanner`, `Run` |
 | Keyword routing (`routing.ts`) | Sets `Record.categoryId` (Category = division) |
-| Classifier (`classify.ts`) | Uses A's `src/lib/claude.ts` (one model setting, fallback). Remove the hard-coded model |
+| Classifier (`classify.ts`) | Uses A's `src/lib/claude.ts` (one model setting, fallback). Remove the hard-coded model. It no longer sets Not relevant: it sets relevance 0 ("Probably noise") and leaves the decision to a person |
 | 48-hour comment band | Top of the Federal rules track page and on the Overview. A's red-means-urgent rule already fits |
 | "Position needed" count | Federal track badge (A's track badges already count items that need action) |
 | Add by Federal Register number or URL (`/api/lookup`) | A's `/bills/new` page gets a "Federal" source option |
@@ -217,8 +219,8 @@ read-only backup for 90 days.
 
 **New columns and values in A (all additive):**
 
-- `RecordKind`: add `FEDERAL_RULE`, `FEDERAL_BILL`, `COURT`.
-- `Priority`: add `URGENT` and `NOT_RELEVANT` (see R4), or map them. Decision needed.
+- `RecordKind`: add `FEDERAL_RULE` only.
+- `Priority`: add `URGENT` (decided, see R4). `NOT_RELEVANT` is not added; it maps to Do not track.
 - `Record`: `legacyId`, `unit`, `standards[]`, `draftState`, `priorityConfirmed`,
   `classifiedAt`, `archivedAt`, `archivedReason`, `publishedOn`, `source`,
   `commentCount`, `commentsCheckedAt`, `recentCommenters`.
@@ -234,22 +236,21 @@ read-only backup for 90 days.
 | B | → A | Rules |
 |---|---|---|
 | `Division` | `Category` | Match by name. No new rows expected |
-| `Person` | `Person` | Match by email, then by exact name. A match: add `categoryId` and lead flags; keep A's role and region. No match: new person, `regionId = null` (HQ), role `HQ` |
+| `Person` | `Person` | Match by email, then by exact name. A match: add `categoryId` and lead flags; keep A's role and region. No match: new person, `regionId = null` (HQ), role `HQ`, or `ADMIN` when `isLead`. A match keeps A's role, except that a lead with a lower role is raised to `ADMIN` (one `Audit` row) |
 | `Item` (FEDERAL) | `Record` kind `FEDERAL_RULE` | `stateCode = US`, `identifier = docket`, `externalId = "fr:" + docket`, `session = null`, `body = agency`, `status = stage`, `summary = abstract`, `citation = frCitation`, `snapshot = lastSnapshot`, `lastCheckedAt = lastSeenAt`, `positionBy = positionSetBy`, `positionAt = positionSetAt`, `categoryId` from division, `ownerId` from person map |
-| `Item` (CONGRESS) | `Record` kind `FEDERAL_BILL` | As above. `session` = Congress number (for example `119`) |
-| `Item` (COURT) | `Record` kind `COURT` | As above. No page until a court feed exists (as in B today) |
-| `Item` (STATE) | `Record` kind BILL | If A has the same bill (`stateCode + session + identifier`, or `openstatesId`): keep A's record; add B's human decisions **only where A has none**; copy B's audit rows to it. If A has no such bill: import only when a person decided something in B (TRACKED, a position, or a set priority). Other rows stay in `radar_legacy` only. Decision needed |
+| `Item` (CONGRESS, STATE, COURT) | — | **Not imported** (decided). Stays in `radar_legacy` only. This includes B's decisions on state bills that A also has |
 | `Item.position` PENDING | `Position.NONE` | Others 1:1 |
+| `Item.priority` | `Priority` | URGENT, HIGH, MEDIUM, LOW 1:1. NOT_RELEVANT → `triage = DISMISSED`, `dismissReason = "Not relevant (from Policy Radar)"`, priority MEDIUM, plus an `Audit` row with the old value |
 | `Item.triage` | `Triage` | 1:1 |
 | `Watch` BLOCK | `Record` with `triage = DISMISSED` | A's rule: a dismissed record is kept so it is not flagged again. Reason "Do not track (from Policy Radar)" |
 | `Watch` AGENCY | `Agency` with `stateCode = US` | `sweep = true` |
 | `Watch` TERM | `Term` with `scope = FEDERAL` | Under a topic "Federal (imported)". Keep hit counts |
 | `Watch` EXCLUDE | `Exclusion` with `scope = FEDERAL` | `status = ACTIVE` or `PAUSED` from `active` |
 | `Watch` DOCKET | `Record` (TRACKED) or new `Term` kind DOCKET | Decision in step 6 |
-| `Watch` JURISDICTION | `State.enabled` | Report only. **Do not change A's monitored states** without the regions |
+| `Watch` JURISDICTION | — | Not imported (state scope). Stays in `radar_legacy` |
 | `Finding` | `Event` | `kind = "FINDING"`, `summary`, `detail`, `at = foundAt`, `emailedAt = foundAt` (so old findings are never emailed) |
 | `Audit` | `Audit` | 1:1. Rows with `itemId = null` keep `recordId = null` |
-| `AgentRun` | `Run` + `Scanner` | Scanner ids `federal-register`, `congress-gov`, `regulations-gov`, `openstates:radar` |
+| `AgentRun` | `Run` + `Scanner` | Scanner ids `federal-register`, `regulations-gov`. Congress and Open States runs stay in `radar_legacy` |
 
 **Duplicates and conflicts:**
 
@@ -269,8 +270,8 @@ Phase 1 (with the merge):
   cookie does not carry over; the domains are different).
 - One "Acting as" list: the merged `Person` table. B's people appear under HQ,
   with their division.
-- Roles for B's people: `HQ` by default. Division leads can be `ADMIN` if they
-  must edit sources. Decision needed.
+- Roles for B's people (decided): `HQ`, no region. Division leads get `ADMIN`,
+  so they can edit federal agencies and dockets on `/admin/sources`.
 - `APP_PASSWORD` on A's Vercel **production**: deferred by the user (2026-10-05).
   Set it at the latest in step 11, before federal data goes live (R1).
 
@@ -283,7 +284,7 @@ already stores a person name, so no data change is necessary.
 **Navigation (A's `Nav.tsx` and `TrackSwitch.tsx`):**
 
 - Top bar: Overview, Calendar, My Committees, Reports, Setup menu (no change).
-- Track tabs: Legislation · Regulation · Local · **Federal rules** · **Congress**,
+- Track tabs: Legislation · Regulation · Local · **Federal rules**,
   each with a count badge. "All tracks" clears the choice.
 - Setup menu: add "Federal sources" (agencies, dockets) inside `/admin/sources`,
   and "System status".
@@ -292,42 +293,47 @@ already stores a person name, so no data change is necessary.
 
 | Filter | Change |
 |---|---|
-| Place (`PlacePicker`) | Add **Federal** above the regions. "All States" stays state-only; a new "Everything" shows state + federal. Federal tracks ignore the place filter |
-| Session (`SessionPicker`) | Federal rules: no session. Congress: current Congress / last Congress |
-| Track (`TrackSwitch`) | 5 tracks |
+| Place (`PlacePicker`) | Add **Federal** above the regions. "All States" stays state-only; a new "Everything" shows state + federal. The Federal rules track ignores the place filter |
+| Session (`SessionPicker`) | Federal rules have no session; the filter does not apply to them |
+| Track (`TrackSwitch`) | 4 tracks |
 | Issue (`Category`) | Already in A. It is B's division filter |
 | Owner, position, priority | Already in A's `FilterBar` |
 
 **Design:** use A's design system (api.org colours, Barlow, red = urgent only).
 The two systems already share track colours (`#2a78d6`, `#1baf7a`). Add colours
-for the two federal tracks, checked as one categorical set for colour blindness
+for the Federal rules track, checked with the other three as one categorical set for colour blindness
 (A already does this check), each with a text label. Port B's 48-hour band and
-deadline chart in A's tokens. One site name and logo: decision needed (for
-example "Policy Radar" for all of it, or "API Policy Tracker").
+deadline chart in A's tokens. Site name: **API Policy Radar** (decided). It sets the header, the page titles
+("… · API Policy Radar"), the sign-in page, `ALERT_FROM` and the Vercel project name.
 
 ### 3.5 Scheduled jobs in one project
 
 - One endpoint: A's `POST /api/collect`, with `?source=` for each part, as B
-  already does (`federal`, `congress`, `regulations`, `classify`).
+  already does (`federal`, `regulations`, `classify`).
 - One scheduler: A's GitHub Actions workflow. The hourly step makes separate
   HTTP calls (state, then federal, then classify), so one slow source does not
   use the time of the others, and each call stays inside the Vercel time limit.
 - The digest step adds federal changes for HQ people and division owners only.
-- One Open States consumer: A. B's parked Open States collector is not ported.
+- One Open States consumer: A. B's Open States and Congress.gov collectors are not ported.
   This also stops two apps from sharing one rate limit.
-- Render cron: A's roadmap asks for a second hourly trigger, because GitHub
-  skips scheduled runs when busy. Option: keep the Render cron, point it at the
-  merged app, and add the "skip if the last run was less than 30 minutes ago"
-  guard. Otherwise delete it after cutover. Decision needed.
+- Render cron (decided 2026-10-05): **keep it as a backup trigger.** GitHub
+  Actions stays the main job (it must: only GitHub can reach palegis.us). At
+  cutover, point the Render cron's `APP_URL` and `COLLECT_SECRET` at the merged
+  app. The app skips a collect run that starts less than 30 minutes after the
+  last one, so a double trigger does nothing. This closes the "second
+  scheduler" item in A's roadmap.
 - One `COLLECT_SECRET` (A's). Rotate it at cutover.
 
 ### 3.6 Hosting
 
-- One Vercel project: `state-legislative-tracker` (rename it to the new site
-  name; the `.vercel.app` address can get a new alias).
+- One Vercel project: `state-legislative-tracker`, renamed to
+  `api-policy-radar` at cutover.
 - One database: Neon.
-- One domain: `state-legislative-tracker.vercel.app` today. A custom domain is
-  recommended for a merged product. Decision needed.
+- One domain (decided 2026-10-05): the new `.vercel.app` address, for example
+  `api-policy-radar.vercel.app` (check that the name is free before cutover).
+  `state-legislative-tracker.vercel.app` stays on the same project, so its
+  links keep working. Set `APP_URL` to the new address. A custom domain can be
+  added later with no code change (only `APP_URL` and `ALERT_FROM` change).
 - Old URL: keep the Vercel project `apipolicydashboard`, but deploy a
   redirect-only version (a `vercel.json` with permanent redirects):
 
@@ -335,7 +341,7 @@ example "Policy Radar" for all of it, or "API Policy Tracker").
   |---|---|
   | `/` and `/regulatory` | `/federal` |
   | `/regulatory?item=<id>` | `/bills/<new id>` (lookup by `legacyId`) |
-  | `/congress` | `/congress` |
+  | `/congress` | `/federal` (the Congress track is not carried over) |
   | `/coverage` | `/coverage?track=federal` |
   | `/login` | `/login` |
   | `/api/*` | no redirect: return 410 with the new address, so a stale caller fails loudly |
@@ -349,17 +355,17 @@ example "Policy Radar" for all of it, or "API Policy Tracker").
 | R1 | A's production has **no `APP_PASSWORD`** in Vercel | Federal positions and notes are open to anyone with the link | **Accepted for now** (user decision, 2026-10-05). Set it at the latest in step 11. Test: a private window goes to `/login` |
 | R2 | A's code expects every record to have a real state | Region filters, HQ ("no region"), digests by region, counts would show federal items in the wrong place or hide them | `State.level`; step 2 changes `scope()` and counts first, with tests, before any federal row exists |
 | R3 | `@@unique([stateCode, session, identifier])` lets duplicates through when `session` is null | A federal rule imported twice | Use `externalId` and `legacyId` (unique) as the import key |
-| R4 | Priority sets differ | URGENT and NOT_RELEVANT are lost if mapped to HIGH and LOW | Add the two values (additive). Or map them and keep the old value in `Audit`. Decision needed |
+| R4 | Priority sets differ | "Urgent" gets two meanings (rank and clock); classifier noise could leave the Inbox by itself | Decided: add `URGENT` as a rank only, never red. `NOT_RELEVANT` → `DISMISSED` with reason "Not relevant (from Policy Radar)", one `Audit` row each. The ported classifier never dismisses: it sets relevance 0 ("Probably noise") and a person decides |
 | R5 | "Do not track" differs | B deletes the item; A keeps it as DISMISSED | Use A's rule. Import B's BLOCK rows as DISMISSED records |
-| R6 | A federal term could flood the state Inboxes | B's terms search the Federal Register; A's terms match state bills | `Term.scope`. Test: the state matcher term count does not change |
-| R7 | On an **empty** database, `10_…` to `16_…` can sort before `1_ai_summary`. B's own README records this failure. A's live database is not affected; a fresh test database can be | Migration names sort as text | Name the new migration `9a_federal` (sorts last). Test: replay all migrations on an empty Neon branch |
-| R8 | Writes in B after the copy are lost | Two databases during the move | Freeze B (read-only page) before the final import |
-| R9 | Federal + state + classify in one call can time out | Vercel function time | Separate HTTP calls (3.5) |
-| R10 | B's classifier plus A's relevance and summaries | Claude cost | One model setting in `claude.ts`; keep B's caps (`CLASSIFY_CAP`) |
-| R11 | Copying B's `middleware.ts` style code into A | Next.js 16 rules | Port to `proxy.ts`; read `node_modules/next/dist/docs/` first, as AGENTS.md says |
-| R12 | Two rows for one person, or one person shown in the wrong division | Person merge | Review list before the real import |
-| R13 | 404s | Bookmarks and old API callers | Redirect table (3.6), 410 on old API paths |
-| R14 | Federal data written to the old database | Old Render cron still calls B after cutover | Disable it or repoint it in the cutover step |
+| R6 | B's terms search the Federal Register; A's terms match state bills | A federal term could flood the state Inboxes | `Term.scope`. Test: the state matcher term count does not change |
+| R7 | Migration names sort as text | On an **empty** database, `10_…` to `16_…` can sort before `1_ai_summary`. B's own README records this failure. A's live database is not affected; a fresh test database can be | Name the new migration `9a_federal` (sorts last). Test: replay all migrations on an empty Neon branch |
+| R8 | Two databases during the move | Writes in B after the copy are lost | Freeze B (read-only page) before the final import |
+| R9 | Vercel function time | Federal + state + classify in one call can time out | Separate HTTP calls (3.5) |
+| R10 | Claude cost | B's classifier plus A's relevance and summaries | One model setting in `claude.ts`; keep B's caps (`CLASSIFY_CAP`) |
+| R11 | Next.js 16 rules | Copying B's `middleware.ts` style code into A | Port to `proxy.ts`; read `node_modules/next/dist/docs/` first, as AGENTS.md says |
+| R12 | Person merge | Two rows for one person, or one person shown in the wrong division | Review list before the real import |
+| R13 | Bookmarks and old API callers | 404s | Redirect table (3.6), 410 on old API paths |
+| R14 | Old Render cron still calls B after cutover | Federal data written to the old database | Repoint it to the merged app in the cutover step (step 11). Test: its next run log shows the merged app's address |
 
 ### 3.8 Steps in order (one PR each)
 
@@ -367,20 +373,20 @@ All PRs go to Project A unless noted. Every step is additive and can ship alone.
 
 | Step | PR | Change | Test |
 |---|---|---|---|
-| 0 | — (ops) | Make a Neon branch and a Render backup. Move this plan into A. Record start counts for every table in both databases | Count file is saved |
+| 0 | — (ops) | Make a Neon branch and a Render backup. Record start counts for every table in both databases | Count file is saved |
 | 1 | Schema | Migration `9a_federal`: new enum values, new columns, `US` state row, `State.level`, `Term.scope`, `Exclusion.scope` | `prisma migrate deploy` on a copy branch of production. Replay on an empty branch. `npm run typecheck`, `npm run build`. Every existing page loads with the same counts |
 | 2 | Scope | `scope()`, counts, digests and region filters skip `level = FEDERAL` unless the place is Federal or Everything | Insert one test federal record on a branch: state counts, Overview and digest preview do not change; Federal shows 1 |
-| 3 | Sources | Port Federal Register, Congress.gov and Regulations.gov sources and collectors. Off until `FEDERAL_ENABLED=1`. Port `smoke.ts` | `npm run smoke -- 14` with no database. On a branch: one run creates records; a second run creates 0 |
+| 3 | Sources | Port Federal Register and Regulations.gov sources and collectors. Off until `FEDERAL_ENABLED=1`. Port `smoke.ts` | `npm run smoke -- 14` with no database. On a branch: one run creates records; a second run creates 0 |
 | 4 | Classifier | Port `routing.ts` and `classify.ts` onto `claude.ts` | On a branch, `limit=5`: only uncategorized federal records change; reasoning is written to `Event` |
-| 5 | UI | Federal rules and Congress tracks, 48-hour band, Position needed badge, add by FR number, federal panel on the record page | Typecheck, build, screenshot each track at desktop and phone width (Playwright), light and dark |
+| 5 | UI | Federal rules track, 48-hour band, Position needed badge, add by FR number, federal panel on the record page | Typecheck, build, screenshot each track at desktop and phone width (Playwright), light and dark |
 | 6 | Coverage | Federal agencies, terms, dockets and exclusions on `/coverage`, `/topics`, `/admin/sources` | State term list and state Inbox counts do not change |
 | 7 | Import script | `scripts/import-radar.ts` with `--dry-run`, people review list, reconciliation report | Dry run on a branch, then a real run on the branch, then a second run: 0 new rows. Report: every B item is mapped or listed as skipped with a reason; positions, priorities, owners and audit counts match |
-| 8 | Scheduler | Workflow calls the federal sources and the classifier. Optional Render backup trigger with the 30-minute guard | `workflow_dispatch` run is green; one `Run` row per scanner |
+| 8 | Scheduler | Workflow calls the federal sources and the classifier. 30-minute skip guard in `/api/collect`. Update `render.yaml` to call the merged app | `workflow_dispatch` run is green; one `Run` row per scanner. Two triggers 1 minute apart: the second is skipped and says so |
 | 9 | Alerts | Federal changes in the HQ digest; federal comment deadlines in the urgent email and the Calendar `.ics` | `/alerts` preview shows the federal section only for HQ people |
 | 10 | Design | Site name, federal track colours, B's chart in A tokens | Colour check script, screenshots |
-| 11 | — (cutover) | Set `APP_PASSWORD` on A production (if not set before). Freeze B. Copy B into `radar_legacy`. Run the import on production. Set `FEDERAL_ENABLED=1`. Rotate `COLLECT_SECRET`. Disable B's Render cron | A private window gets `/login`. Reconciliation report on production equals the branch report. One full hourly run is green |
+| 11 | — (cutover) | Set `APP_PASSWORD` on A production (if not set before). Freeze B. Copy B into `radar_legacy`. Run the import on production. Set `FEDERAL_ENABLED=1`. Rotate `COLLECT_SECRET`. Repoint B's Render cron to the merged app (new `APP_URL`, new secret) | A private window gets `/login`. Reconciliation report on production equals the branch report. One full hourly run is green |
 | 12 | B repo | Replace B with redirect-only `vercel.json` | `curl -I` on each old path gives 308 to the right new path; `/api/collect` gives 410 |
-| 13 | — (clean up, +30 days) | Archive repo B. Delete the Render cron. Keep the Render database backup 90 days | No traffic on the old project in Vercel analytics |
+| 13 | — (clean up, +30 days) | Archive repo B (move `render.yaml` and `scripts/trigger.mjs` for the backup trigger into A first). Keep the Render cron. Keep the Render database backup 90 days | No traffic on the old project in Vercel analytics |
 
 ### 3.9 Rollback plan
 
@@ -390,17 +396,17 @@ All PRs go to Project A unless noted. Every step is additive and can ship alone.
 | 1 (schema) | Do not drop columns in a hurry. Old code ignores them. If necessary, a down migration drops only the new columns and enum values (only before step 11) |
 | 3–9 | Set `FEDERAL_ENABLED=0`. Nothing federal is collected or shown |
 | 7 / 11 (import) | `DELETE FROM "Record" WHERE "legacyId" IS NOT NULL` (cascades to events, notes, matches), and the same for imported people and terms. Or restore the Neon branch made in step 0 (point-in-time restore) |
-| 11 (cutover) | B stays deployable for 30 days: remove the freeze, re-enable the Render cron. Writes made in the merged app during the failed window are listed by the reconciliation script for manual re-entry |
+| 11 (cutover) | B stays deployable for 30 days: remove the freeze, point the Render cron back at B. Writes made in the merged app during the failed window are listed by the reconciliation script for manual re-entry |
 | 12 (redirects) | Redeploy B's previous deployment in Vercel |
 
 ---
 
-## 4. Decisions needed before step 1
+## 4. Decisions (all decided 2026-10-05, except approval)
 
-1. Site name and logo for the merged product.
-2. Priority: add URGENT and NOT_RELEVANT to A, or map them?
-3. B's state bills that A does not have: import only those with a human decision (recommended), or all?
-4. Role for B's people: HQ for everyone, ADMIN for division leads?
-5. Keep the Render cron as a second trigger, or use GitHub Actions only?
-6. Custom domain: yes or no?
+1. ~~Site name and logo~~ **Decided 2026-10-05: "API Policy Radar".** Keep the current coloured mark as the logo.
+2. ~~Priority~~ **Decided 2026-10-05:** add `URGENT` to A's priority list (above High, priority colours, never red). `NOT_RELEVANT` becomes **Do not track** (`triage = DISMISSED`). Old values stay in the audit trail.
+3. ~~B's state bills~~ **Decided 2026-10-05:** bring over federal regulatory functions only. No state bills, no state code, no Congress, no courts.
+4. ~~Roles~~ **Decided 2026-10-05:** every B person gets role `HQ` (no region). The division leads (`isLead`) also get `ADMIN`.
+5. ~~Scheduler~~ **Decided 2026-10-05:** GitHub Actions is the main job; the Render cron stays as a backup trigger to the merged app, with a 30-minute skip guard.
+6. ~~Domain~~ **Decided 2026-10-05:** new `.vercel.app` address after the rename. No custom domain for now.
 7. Approve this plan. **No code changes until approval.**
