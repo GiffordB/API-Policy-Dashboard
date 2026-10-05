@@ -271,8 +271,8 @@ Phase 1 (with the merge):
   with their division.
 - Roles for B's people: `HQ` by default. Division leads can be `ADMIN` if they
   must edit sources. Decision needed.
-- Set `APP_PASSWORD` in A's Vercel **production** before any federal data moves
-  in (R1).
+- `APP_PASSWORD` on A's Vercel **production**: deferred by the user (2026-10-05).
+  Set it at the latest in step 11, before federal data goes live (R1).
 
 Phase 2 (both roadmaps already ask for it, needs approval): real sign-in with
 Microsoft Entra ID. Map the signed-in email to `Person.email`. Every change
@@ -346,7 +346,7 @@ example "Policy Radar" for all of it, or "API Policy Tracker").
 
 | # | Risk | What can break | Control |
 |---|---|---|---|
-| R1 | A's production has **no `APP_PASSWORD`** in Vercel | Federal positions and notes are open to anyone with the link | Set it first (step 0). Test: a private window goes to `/login` |
+| R1 | A's production has **no `APP_PASSWORD`** in Vercel | Federal positions and notes are open to anyone with the link | **Accepted for now** (user decision, 2026-10-05). Set it at the latest in step 11. Test: a private window goes to `/login` |
 | R2 | A's code expects every record to have a real state | Region filters, HQ ("no region"), digests by region, counts would show federal items in the wrong place or hide them | `State.level`; step 2 changes `scope()` and counts first, with tests, before any federal row exists |
 | R3 | `@@unique([stateCode, session, identifier])` lets duplicates through when `session` is null | A federal rule imported twice | Use `externalId` and `legacyId` (unique) as the import key |
 | R4 | Priority sets differ | URGENT and NOT_RELEVANT are lost if mapped to HIGH and LOW | Add the two values (additive). Or map them and keep the old value in `Audit`. Decision needed |
@@ -367,7 +367,7 @@ All PRs go to Project A unless noted. Every step is additive and can ship alone.
 
 | Step | PR | Change | Test |
 |---|---|---|---|
-| 0 | — (ops) | Set `APP_PASSWORD` on A production. Make a Neon branch and a Render backup. Move this plan into A. Record start counts for every table in both databases | Private window gets `/login`. Count file is saved |
+| 0 | — (ops) | Make a Neon branch and a Render backup. Move this plan into A. Record start counts for every table in both databases | Count file is saved |
 | 1 | Schema | Migration `9a_federal`: new enum values, new columns, `US` state row, `State.level`, `Term.scope`, `Exclusion.scope` | `prisma migrate deploy` on a copy branch of production. Replay on an empty branch. `npm run typecheck`, `npm run build`. Every existing page loads with the same counts |
 | 2 | Scope | `scope()`, counts, digests and region filters skip `level = FEDERAL` unless the place is Federal or Everything | Insert one test federal record on a branch: state counts, Overview and digest preview do not change; Federal shows 1 |
 | 3 | Sources | Port Federal Register, Congress.gov and Regulations.gov sources and collectors. Off until `FEDERAL_ENABLED=1`. Port `smoke.ts` | `npm run smoke -- 14` with no database. On a branch: one run creates records; a second run creates 0 |
@@ -378,7 +378,7 @@ All PRs go to Project A unless noted. Every step is additive and can ship alone.
 | 8 | Scheduler | Workflow calls the federal sources and the classifier. Optional Render backup trigger with the 30-minute guard | `workflow_dispatch` run is green; one `Run` row per scanner |
 | 9 | Alerts | Federal changes in the HQ digest; federal comment deadlines in the urgent email and the Calendar `.ics` | `/alerts` preview shows the federal section only for HQ people |
 | 10 | Design | Site name, federal track colours, B's chart in A tokens | Colour check script, screenshots |
-| 11 | — (cutover) | Freeze B. Copy B into `radar_legacy`. Run the import on production. Set `FEDERAL_ENABLED=1`. Rotate `COLLECT_SECRET`. Disable B's Render cron | Reconciliation report on production equals the branch report. One full hourly run is green |
+| 11 | — (cutover) | Set `APP_PASSWORD` on A production (if not set before). Freeze B. Copy B into `radar_legacy`. Run the import on production. Set `FEDERAL_ENABLED=1`. Rotate `COLLECT_SECRET`. Disable B's Render cron | A private window gets `/login`. Reconciliation report on production equals the branch report. One full hourly run is green |
 | 12 | B repo | Replace B with redirect-only `vercel.json` | `curl -I` on each old path gives 308 to the right new path; `/api/collect` gives 410 |
 | 13 | — (clean up, +30 days) | Archive repo B. Delete the Render cron. Keep the Render database backup 90 days | No traffic on the old project in Vercel analytics |
 
